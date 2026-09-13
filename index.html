@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <!-- Optimized for iOS Safari: prevents scaling on input focus and accounts for Dynamic Island & Home Bar -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="體態記錄">
+  <meta name="theme-color" content="#0f172a">
+  <title>體態與體重記錄 | FitTrack</title>
+
+  <!-- PWA Manifest & App Icons -->
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+
+  <!-- Chart.js CDN for interactive weight curve -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- QRCode CDN for instant iPhone pairing -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- Supabase JS Client for 24/7 Serverless Operation -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./supabase-config.js"></script>
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="app" class="ios-app">
+    
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <span class="brand-badge">FitTrack</span>
+        <h1 id="headerTitle" class="header-title">記錄體態</h1>
+      </div>
+      <div class="header-right">
+        <button id="btnQuickScan" class="icon-btn" title="查看手機連線資訊">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+            <path d="M14 14h2v2h-2z"></path>
+            <path d="M18 14h3v3h-3z"></path>
+            <path d="M14 18h3v3h-3z"></path>
+            <path d="M20 20h1v1h-1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Container with Tabs -->
+    <main class="app-content">
+
+      <!-- ================= TAB 1: 記錄 (Log) ================= -->
+      <section id="tab-log" class="tab-pane active">
+        <form id="recordForm" class="form-container">
+          
+          <!-- Weight Input Hero Card -->
+          <div class="card weight-card">
+            <div class="card-label">今日體重 (KG)</div>
+            <div class="weight-input-group">
+              <input type="number" id="weightInput" step="0.1" min="20" max="300" placeholder="00.0" required autofocus>
+              <span class="weight-unit">kg</span>
+            </div>
+            
+            <!-- Quick adjustment buttons for easy thumb tapping -->
+            <div class="quick-steppers">
+              <button type="button" class="step-btn" data-step="-0.5">-0.5</button>
+              <button type="button" class="step-btn" data-step="-0.1">-0.1</button>
+              <button type="button" class="step-btn" data-step="+0.1">+0.1</button>
+              <button type="button" class="step-btn" data-step="+0.5">+0.5</button>
+            </div>
+          </div>
+
+          <!-- Body Fat & Date Section -->
+          <div class="form-row-grid">
+            <div class="card mini-card">
+              <label for="bodyFatInput" class="card-sublabel">體脂率 (選填)</label>
+              <div class="mini-input-group">
+                <input type="number" id="bodyFatInput" step="0.1" min="3" max="60" placeholder="--">
+                <span class="mini-unit">%</span>
+              </div>
+            </div>
+            <div class="card mini-card">
+              <label for="recordDateInput" class="card-sublabel">測量日期時間</label>
+              <input type="datetime-local" id="recordDateInput" class="date-input">
+            </div>
+          </div>
+
+          <!-- Camera & Photo Section (Direct iOS Sandbox Trigger) -->
+          <div class="card photo-card">
+            <div class="card-header-flex">
+              <div class="card-label">📸 體態照片</div>
+              <span class="privacy-pill">🛡️ 不存入 iPhone 相簿</span>
+            </div>
+
+            <div class="privacy-tip">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+              <span>防護機制生效中：照片拍完直達後端電腦，手機相簿無殘留。</span>
+            </div>
+
+            <!-- Angle Selector -->
+            <div class="angle-selector">
+              <label class="angle-radio">
+                <input type="radio" name="photoAngle" value="front" checked>
+                <span>🧍 正面</span>
+              </label>
+              <label class="angle-radio">
+                <input type="radio" name="photoAngle" value="side">
+                <span>🚶 側面</span>
+              </label>
+              <label class="angle-radio">
+                <input type="radio" name="photoAngle" value="back">
+                <span>🚶‍♂️ 背面</span>
+              </label>
+            </div>
+
+            <!-- Native File Input with capture="environment" -->
+            <!-- In iOS Safari, capture="environment" launches camera directly and DOES NOT save to Camera Roll -->
+            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden-file-input">
+
+            <!-- Photo Preview Area / Trigger Button -->
+            <div id="photoPreviewContainer" class="photo-preview-box">
+              <div id="photoPlaceholder" class="photo-placeholder">
+                <div class="shutter-icon-wrap">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                  </svg>
+                </div>
+                <div class="placeholder-title">點擊啟動相機拍照</div>
+                <div class="placeholder-sub">直接調用鏡頭，拍完即上傳</div>
+              </div>
+
+              <!-- Active Image Preview once taken -->
+              <div id="photoPreviewWrapper" class="preview-wrapper hidden">
+                <img id="photoPreviewImg" src="" alt="體態預覽">
+                <div class="preview-overlay">
+                  <span id="previewAngleBadge" class="preview-badge">正面</span>
+                  <button type="button" id="btnRetakePhoto" class="btn-retake">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M23 4v6h-6"></path>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                    重拍
+                  </button>
+                  <button type="button" id="btnRemovePhoto" class="btn-remove">✕</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Tags & Notes -->
+          <div class="card notes-card">
+            <div class="card-label">備註與情境標籤</div>
+            <div class="tag-chips">
+              <button type="button" class="tag-chip" data-tag="空腹晨磅">☀️ 空腹晨磅</button>
+              <button type="button" class="tag-chip" data-tag="重訓後">💪 重訓後</button>
+              <button type="button" class="tag-chip" data-tag="有氧後">🏃 有氧後</button>
+              <button type="button" class="tag-chip" data-tag="排便後">💧 排便後</button>
+              <button type="button" class="tag-chip" data-tag="聚餐後">🍽️ 聚餐後</button>
+              <button type="button" class="tag-chip" data-tag="睡前">🌙 睡前</button>
+            </div>
+            <textarea id="noteInput" rows="2" placeholder="備註今日飲食、訓練感受或體態心情..." maxlength="300"></textarea>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="submit-action-bar">
+            <button type="submit" id="btnSubmitRecord" class="btn-primary-gradient">
+              <span class="btn-text">儲存體態記錄</span>
+              <span class="btn-spinner hidden"></span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ================= TAB 2: 趨勢 (Trends) ================= -->
+      <section id="tab-trends" class="tab-pane">
+        
+        <!-- Summary Stat Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-title">當前最新</span>
+            <div class="stat-value"><span id="statLatestWeight">--</span> <small>kg</small></div>
+            <span id="statDate" class="stat-sub">無記錄</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-title">總變化</span>
+            <div class="stat-value" id="statChangeWrap"><span id="statChange">--</span> <small>kg</small></div>
+            <span id="statFromStart" class="stat-sub">起始: -- kg</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-title">目標差距</span>
+            <div class="stat-value"><span id="statToTarget">--</span> <small>kg</small></div>
+            <span id="statTargetVal" class="stat-sub">目標: -- kg</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-title">當前 BMI</span>
+            <div class="stat-value"><span id="statBmi">--</span></div>
+            <span id="statBmiCategory" class="stat-sub badge-normal">--</span>
+          </div>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="card chart-card">
+          <div class="chart-header">
+            <span class="card-label">體重變化曲線</span>
+            <div class="range-selector">
+              <button type="button" class="range-btn active" data-days="7">7天</button>
+              <button type="button" class="range-btn" data-days="30">30天</button>
+              <button type="button" class="range-btn" data-days="90">90天</button>
+              <button type="button" class="range-btn" data-days="all">全部</button>
+            </div>
+          </div>
+          <div class="chart-canvas-wrapper">
+            <canvas id="weightChart"></canvas>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ================= TAB 3: 時間軸 (Timeline) ================= -->
+      <section id="tab-timeline" class="tab-pane">
+        <div class="timeline-filter-bar">
+          <span id="timelineCountText">共 0 筆記錄</span>
+          <label class="filter-checkbox">
+            <input type="checkbox" id="filterPhotosOnly">
+            <span>僅顯示有體態照</span>
+          </label>
+        </div>
+
+        <!-- Timeline Stream Cards -->
+        <div id="timelineContainer" class="timeline-feed">
+          <div class="empty-state">
+            <div class="empty-icon">📅</div>
+            <p>目前尚無紀錄</p>
+            <p class="empty-sub">前往「記錄」頁面拍照登錄第一次體態吧！</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 4: 前後對比 (Before & After) ================= -->
+      <section id="tab-compare" class="tab-pane">
+        <div class="card compare-header-card">
+          <div class="card-label">⚖️ 體態前後對比 (Before & After)</div>
+          <p class="compare-desc">挑選兩個日期的體態照片，直觀比對肌肉線條與身形變化。</p>
+          
+          <div class="compare-pickers">
+            <div class="picker-group">
+              <label for="compareBeforeSelect">⬅️ 基準日 (Before)</label>
+              <select id="compareBeforeSelect" class="styled-select"></select>
+            </div>
+            <div class="picker-group">
+              <label for="compareAfterSelect">➡️ 對比日 (After)</label>
+              <select id="compareAfterSelect" class="styled-select"></select>
+            </div>
+          </div>
+
+          <div id="compareSummaryBadge" class="compare-diff-pill hidden">
+            <span>體重變化: <strong id="compareWeightDiff">-0.0 kg</strong></span>
+            <span class="compare-day-span">(間隔 <span id="compareDaysDiff">0</span> 天)</span>
+          </div>
+        </div>
+
+        <!-- Split / Interactive Comparison Stage -->
+        <div id="compareStage" class="card compare-stage-card">
+          <div class="compare-mode-toggle">
+            <button type="button" id="btnModeSlider" class="compare-tab-btn active">滑動比對</button>
+            <button type="button" id="btnModeSide" class="compare-tab-btn">並排比對</button>
+          </div>
+
+          <!-- Mode 1: Interactive Slider Comparison -->
+          <div id="sliderCompareView" class="comparison-slider-container">
+            <div class="comparison-item item-after">
+              <img id="imgCompareAfter" src="" alt="After">
+              <div class="photo-tag after-tag">AFTER <span id="tagAfterDate"></span></div>
+            </div>
+            <div class="comparison-item item-before" id="itemBeforeWrap">
+              <img id="imgCompareBefore" src="" alt="Before">
+              <div class="photo-tag before-tag">BEFORE <span id="tagBeforeDate"></span></div>
+            </div>
+            <!-- Interactive Draggable Divider -->
+            <div class="slider-divider" id="sliderDivider">
+              <div class="slider-handle">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mode 2: Side-by-side View -->
+          <div id="sideCompareView" class="side-by-side-container hidden">
+            <div class="side-box">
+              <div class="side-img-wrap">
+                <img id="imgSideBefore" src="" alt="Before">
+              </div>
+              <div class="side-caption">
+                <span class="side-badge before">BEFORE</span>
+                <div id="sideBeforeInfo" class="side-info">--</div>
+              </div>
+            </div>
+            <div class="side-box">
+              <div class="side-img-wrap">
+                <img id="imgSideAfter" src="" alt="After">
+              </div>
+              <div class="side-caption">
+                <span class="side-badge after">AFTER</span>
+                <div id="sideAfterInfo" class="side-info">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 5: 設定 (Settings) ================= -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="card">
+          <div class="card-label">個人身材目標設定</div>
+          
+          <div class="setting-item">
+            <div class="setting-label-col">
+              <span class="setting-title">身高 (cm)</span>
+              <span class="setting-hint">用於準確計算 BMI 指數</span>
+            </div>
+            <div class="setting-input-col">
+              <input type="number" id="settingHeight" step="0.5" min="100" max="250" placeholder="175">
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-label-col">
+              <span class="setting-title">目標體重 (kg)</span>
+              <span class="setting-hint">計算達成進度與差額</span>
+            </div>
+            <div class="setting-input-col">
+              <input type="number" id="settingTargetWeight" step="0.1" min="30" max="200" placeholder="65.0">
+            </div>
+          </div>
+
+          <button type="button" id="btnSaveSettings" class="btn-secondary">儲存個人設定</button>
+        </div>
+
+        <!-- Supabase Cloud Config Card -->
+        <div class="card supabase-card">
+          <div class="card-header-flex">
+            <div class="card-label">☁️ Supabase 雲端連線 (免開電腦)</div>
+            <span id="supabaseStatusBadge" class="privacy-pill" style="color:#f59e0b;background:rgba(245,158,11,0.15);border-color:rgba(245,158,11,0.3)">尚未連線</span>
+          </div>
+          <p class="setting-hint" style="margin-bottom: 12px;">設定後，體態照片與記錄將儲存在 Supabase 雲端，電腦不用開機，iPhone 隨時隨地可連線。</p>
+
+          <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+            <span class="setting-title" style="font-size:13px">Supabase Project URL:</span>
+            <input type="url" id="inputSupabaseUrl" class="date-input" style="width:100%" placeholder="https://xyzcompany.supabase.co">
+          </div>
+
+          <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+            <span class="setting-title" style="font-size:13px">Supabase Anon Public Key:</span>
+            <input type="password" id="inputSupabaseKey" class="date-input" style="width:100%" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button type="button" id="btnSaveSupabase" class="btn-secondary" style="flex: 2; margin-top:0; background: var(--gradient-primary); color: #0b0f19; font-weight:700">儲存並連線雲端</button>
+            <button type="button" id="btnClearSupabase" class="btn-secondary" style="flex: 1; margin-top:0; color: #ef4444">清除連線</button>
+          </div>
+        </div>
+
+        <!-- Phone Connection Guide & QR Card -->
+        <div class="card connection-card">
+          <div class="card-label">📱 iPhone 連線與無痕隱私說明</div>
+          <div class="info-list">
+            <div class="info-row">
+              <span class="info-icon">📶</span>
+              <div>
+                <strong>區域網路連線</strong>
+                <p>請確認 iPhone 與電腦連上同一個 Wi-Fi。</p>
+                <code id="netAddressDisplay" class="code-badge">載入中...</code>
+              </div>
+            </div>
+            <div class="info-row">
+              <span class="info-icon">📲</span>
+              <div>
+                <strong>加入主畫面 (如同原生 App)</strong>
+                <p>在 iPhone Safari 點擊底部的「分享」按鈕，選擇「<strong>加入主畫面</strong>」，即可隱藏網址列全螢幕使用！</p>
+              </div>
+            </div>
+            <div class="info-row">
+              <span class="info-icon">🔒</span>
+              <div>
+                <strong>相片零殘留防護保證</strong>
+                <p>本系統使用 iOS Safari 沙盒直傳，拍照後相片直接儲存在電腦後端，iPhone 相簿不會有任何體態私密照。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Export -->
+        <div class="card">
+          <div class="card-label">資料庫與備份</div>
+          <p class="setting-hint" style="margin-bottom: 12px;">照片檔案完整存放在電腦本地 <code>data/uploads/</code> 目錄中。</p>
+          <button type="button" id="btnExportData" class="btn-secondary">匯出完整記錄 (JSON)</button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Modal for High-Res Photo Viewing -->
+    <div id="photoModal" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <button type="button" id="btnCloseModal" class="btn-close-modal">✕</button>
+        <div class="modal-body">
+          <img id="modalImg" src="" alt="體態大圖">
+          <div id="modalDetails" class="modal-details"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Scan QR Modal -->
+    <div id="qrModal" class="modal-backdrop hidden">
+      <div class="modal-dialog qr-dialog">
+        <button type="button" id="btnCloseQrModal" class="btn-close-modal">✕</button>
+        <div class="qr-card-content">
+          <h3>📱 手機掃碼開啟</h3>
+          <p class="qr-desc">請使用 iPhone 相機直接對準下方 QR Code：</p>
+          <div id="qrCanvasContainer" class="qr-canvas-wrap"></div>
+          <div id="qrUrlText" class="qr-url-text"></div>
+          <p class="qr-sub">需確認 iPhone 與此電腦連接同一個 Wi-Fi</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Supabase Setup Wizard Modal -->
+    <div id="supabaseSetupModal" class="modal-backdrop hidden">
+      <div class="modal-dialog qr-dialog" style="text-align: left; padding: 24px;">
+        <button type="button" id="btnCloseSupabaseModal" class="btn-close-modal">✕</button>
+        <h3 style="font-size: 18px; margin-bottom: 8px; color: #fff;">☁️ 啟用 Supabase 雲端免開電腦</h3>
+        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
+          只需 3 個步驟即可綁定您的免費雲端資料庫與相片儲存桶：
+        </p>
+        <ol style="font-size: 13px; color: #cbd5e1; padding-left: 18px; margin-bottom: 16px; line-height: 1.7;">
+          <li>在 <a href="https://supabase.com" target="_blank" style="color: #38bdf8;">supabase.com</a> 建立免費專案。</li>
+          <li>在專案的 <strong>SQL Editor</strong> 貼上執行 <code>supabase_setup.sql</code>。</li>
+          <li>在 <strong>Project Settings > API</strong> 複製 URL 與 anon key 貼在下方：</li>
+        </ol>
+
+        <div style="margin-bottom: 12px;">
+          <label style="font-size: 12px; color: #94a3b8; display:block; margin-bottom:4px;">Project URL:</label>
+          <input type="url" id="modalInputUrl" class="date-input" style="width: 100%;" placeholder="https://xxxx.supabase.co">
+        </div>
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 12px; color: #94a3b8; display:block; margin-bottom:4px;">Anon Public Key:</label>
+          <input type="password" id="modalInputKey" class="date-input" style="width: 100%;" placeholder="eyJhbGciOiJIUzI1Ni...">
+        </div>
+
+        <button type="button" id="btnModalSaveSupabase" class="btn-primary-gradient" style="padding: 13px;">確認連線並開始使用</button>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation Bar (Apple Health Style) -->
+    <nav class="bottom-nav-bar">
+      <button type="button" class="nav-tab active" data-tab="tab-log">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 20h9"></path>
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+        </svg>
+        <span class="nav-label">記錄</span>
+      </button>
+
+      <button type="button" class="nav-tab" data-tab="tab-trends">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+        <span class="nav-label">趨勢</span>
+      </button>
+
+      <button type="button" class="nav-tab" data-tab="tab-timeline">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span class="nav-label">時間軸</span>
+      </button>
+
+      <button type="button" class="nav-tab" data-tab="tab-compare">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="18" r="3"></circle>
+          <path d="M12 2v20"></path>
+          <path d="M6 15l6-9 6 9"></path>
+        </svg>
+        <span class="nav-label">對比</span>
+      </button>
+
+      <button type="button" class="nav-tab" data-tab="tab-settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span class="nav-label">設定</span>
+      </button>
+    </nav>
+
+    <!-- Toast Notification Container -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

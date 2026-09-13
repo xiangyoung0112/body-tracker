@@ -1,0 +1,197 @@
+const fs = require('fs');
+const path = require('path');
+const { DatabaseSync } = require('node:sqlite');
+
+// Ensure data and uploads directories exist
+const dataDir = path.join(__dirname, 'data');
+const uploadsDir = path.join(dataDir, 'uploads');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const dbPath = path.join(dataDir, 'weight_tracker.db');
+const db = new DatabaseSync(dbPath);
+
+// Initialize database tables
+function initDb() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      weight REAL NOT NULL,
+      body_fat REAL,
+      record_date TEXT NOT NULL,
+      note TEXT,
+      tags TEXT,
+      photo_path TEXT,
+      photo_angle TEXT DEFAULT 'front',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+  `);
+
+  // Initialize default settings if not already present
+  const defaultSettings = [
+    { key: 'target_weight', value: '65.0' },
+    { key: 'height_cm', value: '175.0' },
+    { key: 'user_name', value: '體態記錄' }
+  ];
+
+  const insertSetting = db.prepare(`
+    INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)
+  `);
+
+  for (const s of defaultSettings) {
+    insertSetting.run(s.key, s.value);
+  }
+}
+
+initDb();
+
+const recordDao = {
+  // Get all records ordered by record_date descending
+  getAll(limit = 100, offset = 0) {
+    const stmt = db.prepare(`
+      SELECT * FROM records
+      ORDER BY record_date DESC, id DESC
+      LIMIT ? OFFSET ?
+    `);
+    return stmt.all(limit, offset);
+  },
+
+  // Get records with photos only (for physique timeline / comparison)
+  getRecordsWithPhotos() {
+    const stmt = db.prepare(`
+      SELECT * FROM records
+      WHERE photo_path IS NOT NULL AND photo_path != ''
+      ORDER BY record_date DESC, id DESC
+    `);
+    return stmt.all();
+  },
+
+  // Get a single record by ID
+  getById(id) {
+    const stmt = db.prepare(`SELECT * FROM records WHERE id = ?`);
+    return stmt.get(id);
+  },
+
+  // Insert a new record
+  create({ weight, body_fat, record_date, note, tags, photo_path, photo_angle }) {
+    const createdAt = new Date().toISOString();
+    const stmt = db.prepare(`
+      INSERT INTO records (weight, body_fat, record_date, note, tags, photo_path, photo_angle, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      parseFloat(weight),
+      body_fat ? parseFloat(body_fat) : null,
+      record_date || createdAt.substring(0, 10),
+      note || '',
+      tags || '',
+      photo_path || null,
+      photo_angle || 'front',
+      createdAt
+    );
+    return this.getById(result.lastInsertRowid);
+  },
+
+  // Delete a record by ID and return the deleted record (so we can delete photo file)
+  delete(id) {
+    const record = this.getById(id);
+    if (!record) return null;
+
+    const stmt = db.prepare(`DELETE FROM records WHERE id = ?`);
+    stmt.run(id);
+
+    // If there is an associated photo file, delete it
+    if (record.photo_path) {
+      const fullPath = path.join(uploadsDir, record.photo_path);
+      if (fs.existsSync(fullPath)) {
+        try {
+          fs.unlinkSync(fullPath);
+        } catch (e) {
+          console.error(`Failed to delete photo file: ${fullPath}`, e);
+        }
+      }
+    }
+
+    return record;
+  },
+
+  // Get statistics for dashboard
+  getStats() {
+    // Total entries
+    const countStmt = db.prepare(`SELECT COUNT(*) as count FROM records`);
+    const { count } = countStmt.get();
+
+    // Latest record
+    const latestStmt = db.prepare(`
+      SELECT weight, body_fat, record_date FROM records
+      ORDER BY record_date DESC, id DESC
+      LIMIT 1
+    `);
+    const latest = latestStmt.get() || null;
+
+    // First (earliest) record
+    const earliestStmt = db.prepare(`
+      SELECT weight, body_fat, record_date FROM records
+      ORDER BY record_date ASC, id ASC
+      LIMIT 1
+    `);
+    const earliest = earliestStmt.get() || null;
+
+    // Min and Max weight
+    const minMaxStmt = db.prepare(`
+      SELECT MIN(weight) as min_weight, MAX(weight) as max_weight FROM records
+    `);
+    const { min_weight, max_weight } = minMaxStmt.get() || { min_weight: null, max_weight: null };
+
+    // Target weight & Height
+    const settings = settingsDao.getAll();
+
+    return {
+      total_count: count,
+      latest: latest,
+      earliest: earliest,
+      min_weight: min_weight,
+      max_weight: max_weight,
+      target_weight: parseFloat(settings.target_weight || '65.0'),
+      height_cm: parseFloat(settings.height_cm || '175.0'),
+      weight_change: (latest && earliest) ? parseFloat((latest.weight - earliest.weight).toFixed(1)) : 0
+    };
+  }
+};
+
+const settingsDao = {
+  getAll() {
+    const stmt = db.prepare(`SELECT key, value FROM settings`);
+    const rows = stmt.all();
+    const result = {};
+    for (const r of rows) {
+      result[r.key] = r.value;
+    }
+    return result;
+  },
+
+  set(key, value) {
+    const stmt = db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `);
+    stmt.run(key, String(value));
+  }
+};
+
+module.exports = {
+  db,
+  dataDir,
+  uploadsDir,
+  recordDao,
+  settingsDao
+};
