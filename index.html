@@ -37,32 +37,32 @@
       <h2 class="auth-title">FitTrack 私人保險箱</h2>
       <p class="auth-sub">最高等級隱私加密 • 只有您能解鎖體態照片</p>
 
-      <!-- Toggle Tabs: 登入 / 註冊 -->
-      <div class="auth-tabs">
-        <button type="button" id="tabBtnLogin" class="auth-tab active">登入保險箱</button>
-        <button type="button" id="tabBtnRegister" class="auth-tab">初次建立密碼</button>
-      </div>
-
       <form id="authForm" class="auth-form">
         <div class="auth-input-group">
-          <label for="authEmail">個人 Email / 帳號</label>
-          <input type="email" id="authEmail" placeholder="your@email.com" required autocomplete="username">
+          <label for="authEmail">個人 Email / 專屬帳號</label>
+          <input type="email" id="authEmail" placeholder="例：myfitness@vault.com" required autocomplete="username">
         </div>
         <div class="auth-input-group">
-          <label for="authPassword">密碼</label>
-          <input type="password" id="authPassword" placeholder="至少 6 位英數密碼" minlength="6" required autocomplete="current-password">
+          <label for="authPassword">保險箱密碼 (至少 6 位)</label>
+          <input type="password" id="authPassword" placeholder="輸入您的專屬密碼" minlength="6" required autocomplete="current-password">
         </div>
 
         <div id="authErrorMsg" class="auth-error hidden"></div>
 
+        <!-- Smart Action: One Button That Handles Both Login and First-Time Signup Automatically! -->
         <button type="submit" id="btnSubmitAuth" class="btn-primary-gradient auth-submit-btn">
-          <span class="btn-text">解鎖私人保險箱</span>
+          <span class="btn-text">🚀 進入私人保險箱 (自動識別/註冊)</span>
           <span class="btn-spinner hidden"></span>
         </button>
+
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <button type="button" id="btnActionLogin" class="btn-secondary" style="flex:1; margin-top:0; font-size:13px; padding:10px 0;">🔑 登入已有帳號</button>
+          <button type="button" id="btnActionRegister" class="btn-secondary" style="flex:1; margin-top:0; font-size:13px; padding:10px 0; color:#38bdf8; border-color:rgba(56,189,248,0.3)">✨ 初次建立密碼</button>
+        </div>
       </form>
 
       <div class="auth-footer-tip">
-        🛡️ 相片桶已全加密 (Private Bucket)，未登入者無法以任何方式存取。
+        🛡️ 相片桶已全加密 (Private Bucket)，全世界只有您能存取。
       </div>
     </div>
   </div>

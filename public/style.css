@@ -1254,27 +1254,33 @@ textarea#noteInput:focus {
 
 /* ================= Auth Screen (Private Vault Lock) ================= */
 .auth-screen {
-  min-height: 100vh;
-  min-height: -webkit-fill-available;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 20px;
-  background: radial-gradient(circle at 50% 20%, rgba(16, 185, 129, 0.12) 0%, rgba(11, 15, 25, 1) 70%);
+  padding: calc(20px + var(--safe-top)) 20px calc(20px + var(--safe-bottom));
+  background: radial-gradient(circle at 50% 20%, rgba(16, 185, 129, 0.15) 0%, rgba(11, 15, 25, 0.98) 75%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: fadeIn 0.3s ease;
 }
 
 .auth-card {
   width: 100%;
   max-width: 400px;
-  background: rgba(22, 32, 50, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(22, 32, 50, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-lg);
   padding: 32px 24px 28px;
   text-align: center;
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8);
+  user-select: auto !important;
+  -webkit-user-select: auto !important;
+  touch-action: manipulation;
 }
 
 .auth-icon-wrap {

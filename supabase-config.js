@@ -1,21 +1,47 @@
 /**
  * FitTrack - Supabase Cloud Service Layer (Private Vault Edition)
- * Highest Security: Private Storage Bucket + Signed URLs + Authentication Lock
+ * Security: Keys are hidden from GitHub and stored locally in device localStorage.
+ * Supports One-Time URL Activation (#vault=URL&k=KEY).
  */
 
 const SupabaseService = (() => {
   const STORAGE_KEY_URL = 'fittrack_supabase_url';
   const STORAGE_KEY_KEY = 'fittrack_supabase_key';
 
-  // Pre-configured project credentials
-  const DEFAULT_URL = 'https://skwbxthrdkcdrqvzoaxy.supabase.co';
-  const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrd2J4dGhyZGtjZHJxdnpvYXh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMDg3NTksImV4cCI6MjA5ODU4NDc1OX0.7I44Rw_MsUh-pPm0LE0NPymQy01GvxnMRjder7l7kfQ';
+  // GitHub Clean Mode: Empty by default so public repository contains NO keys!
+  const DEFAULT_URL = '';
+  const DEFAULT_KEY = '';
+
+  // Auto-import credentials if visiting with one-time activation hash or query
+  function checkUrlActivation() {
+    try {
+      const searchStr = window.location.hash || window.location.search;
+      if (searchStr && searchStr.includes('vault=')) {
+        const clean = searchStr.replace(/^[#?]/, '');
+        const params = new URLSearchParams(clean);
+        const vaultUrl = params.get('vault');
+        const vaultKey = params.get('k');
+        if (vaultUrl && vaultKey) {
+          localStorage.setItem(STORAGE_KEY_URL, decodeURIComponent(vaultUrl));
+          localStorage.setItem(STORAGE_KEY_KEY, decodeURIComponent(vaultKey));
+          // Clean URL bar immediately
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('URL activation parse error:', e);
+    }
+  }
+
+  checkUrlActivation();
 
   let client = null;
   let currentUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_URL;
   let currentKey = localStorage.getItem(STORAGE_KEY_KEY) || DEFAULT_KEY;
 
-  // In-memory cache for temporary signed URLs to minimize cloud roundtrips
+  // In-memory cache for temporary signed URLs
   const signedUrlCache = new Map();
 
   function initClient(url, key) {
@@ -62,6 +88,15 @@ const SupabaseService = (() => {
       return initClient(url, key);
     },
 
+    clearCredentials() {
+      client = null;
+      currentUrl = '';
+      currentKey = '';
+      localStorage.removeItem(STORAGE_KEY_URL);
+      localStorage.removeItem(STORAGE_KEY_KEY);
+      signedUrlCache.clear();
+    },
+
     // ==================== AUTHENTICATION ====================
 
     async getCurrentUser() {
@@ -85,7 +120,7 @@ const SupabaseService = (() => {
     },
 
     async signIn(email, password) {
-      if (!client) throw new Error('Supabase 尚未初始化');
+      if (!client) throw new Error('雲端連線尚未設定，請先使用專屬啟動連結');
       const { data, error } = await client.auth.signInWithPassword({
         email: email.trim(),
         password: password.trim()
@@ -95,7 +130,7 @@ const SupabaseService = (() => {
     },
 
     async signUp(email, password) {
-      if (!client) throw new Error('Supabase 尚未初始化');
+      if (!client) throw new Error('雲端連線尚未設定，請先使用專屬啟動連結');
       const { data, error } = await client.auth.signUp({
         email: email.trim(),
         password: password.trim()
@@ -122,7 +157,6 @@ const SupabaseService = (() => {
 
     // ==================== PRIVATE STORAGE & SIGNED URLS ====================
 
-    // Upload photo to private bucket 'body-photos'
     async uploadPhoto(blob) {
       if (!client) throw new Error('Supabase 尚未初始化');
 
@@ -144,7 +178,6 @@ const SupabaseService = (() => {
         throw error;
       }
 
-      // Generate initial signed URL for instant in-session display
       const signedUrl = await this.getSignedPhotoUrl(fileName, 3600);
 
       return {
@@ -153,11 +186,9 @@ const SupabaseService = (() => {
       };
     },
 
-    // Generate or fetch cached signed URL (valid for 1 hour)
     async getSignedPhotoUrl(photoPath, expiresIn = 3600) {
       if (!client || !photoPath) return null;
 
-      // Check cache (refresh if less than 5 minutes remain)
       const cached = signedUrlCache.get(photoPath);
       const now = Date.now();
       if (cached && cached.expiresAt > now + 300 * 1000) {
@@ -219,7 +250,6 @@ const SupabaseService = (() => {
 
       const records = data || [];
 
-      // Resolve signed URLs for all photos in parallel
       await Promise.all(
         records.map(async (r) => {
           if (r.photo_path) {

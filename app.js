@@ -30,8 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auth Screen (Private Vault Lock)
     authScreen: document.getElementById('authScreen'),
     appContainer: document.getElementById('app'),
-    tabBtnLogin: document.getElementById('tabBtnLogin'),
-    tabBtnRegister: document.getElementById('tabBtnRegister'),
+    btnActionLogin: document.getElementById('btnActionLogin'),
+    btnActionRegister: document.getElementById('btnActionRegister'),
     authForm: document.getElementById('authForm'),
     authEmail: document.getElementById('authEmail'),
     authPassword: document.getElementById('authPassword'),
@@ -158,64 +158,87 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==================== AUTHENTICATION LOCK FLOW ====================
-  let authMode = 'login'; // 'login' or 'register'
-
   function initAuthFlow() {
     if (!window.SupabaseService) return;
 
-    // Switch between Login and Register
-    elements.tabBtnLogin.addEventListener('click', () => {
-      authMode = 'login';
-      elements.tabBtnLogin.classList.add('active');
-      elements.tabBtnRegister.classList.remove('active');
-      elements.btnSubmitAuth.querySelector('.btn-text').textContent = '解鎖私人保險箱';
-      elements.authErrorMsg.classList.add('hidden');
-    });
-
-    elements.tabBtnRegister.addEventListener('click', () => {
-      authMode = 'register';
-      elements.tabBtnRegister.classList.add('active');
-      elements.tabBtnLogin.classList.remove('active');
-      elements.btnSubmitAuth.querySelector('.btn-text').textContent = '建立專屬保險箱帳號';
-      elements.authErrorMsg.classList.add('hidden');
-    });
-
-    // Submit Auth Form (Sign In / Sign Up)
-    elements.authForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    // Helper: Execute authentication (login, register, or smart auto-detect)
+    async function executeAuth(mode = 'auto') {
       const email = elements.authEmail.value.trim();
       const password = elements.authPassword.value.trim();
 
-      if (!email || !password) return;
+      if (!email || !password) {
+        elements.authErrorMsg.textContent = '請輸入個人 Email 與密碼';
+        elements.authErrorMsg.classList.remove('hidden');
+        return;
+      }
+      if (password.length < 6) {
+        elements.authErrorMsg.textContent = '密碼長度至少需 6 個字元';
+        elements.authErrorMsg.classList.remove('hidden');
+        return;
+      }
 
       const btnText = elements.btnSubmitAuth.querySelector('.btn-text');
       const btnSpinner = elements.btnSubmitAuth.querySelector('.btn-spinner');
       btnText.classList.add('hidden');
       btnSpinner.classList.remove('hidden');
       elements.btnSubmitAuth.disabled = true;
+      if (elements.btnActionLogin) elements.btnActionLogin.disabled = true;
+      if (elements.btnActionRegister) elements.btnActionRegister.disabled = true;
       elements.authErrorMsg.classList.add('hidden');
 
       try {
-        if (authMode === 'register') {
+        if (mode === 'register') {
           showToast('正在建立您的私人保險箱帳號...');
           await window.SupabaseService.signUp(email, password);
-          showToast('🎉 保險箱已建立並安全解鎖！');
-        } else {
+          showToast('🎉 保險箱帳號已建立並安全解鎖！');
+        } else if (mode === 'login') {
           showToast('正在驗證密碼...');
           await window.SupabaseService.signIn(email, password);
           showToast('🔓 保險箱已解鎖！');
+        } else {
+          // AUTO mode: Try sign in first. If user doesn't exist, automatically sign up!
+          showToast('正在解鎖私人保險箱...');
+          try {
+            await window.SupabaseService.signIn(email, password);
+            showToast('🔓 保險箱已解鎖！');
+          } catch (loginErr) {
+            const msg = (loginErr.message || '').toLowerCase();
+            if (msg.includes('invalid login credentials') || msg.includes('user not found')) {
+              showToast('初次使用，正在為您建立專屬保險箱...');
+              await window.SupabaseService.signUp(email, password);
+              showToast('🎉 專屬保險箱建立成功，已解鎖！');
+            } else {
+              throw loginErr;
+            }
+          }
         }
       } catch (err) {
         console.error('Auth error:', err);
-        elements.authErrorMsg.textContent = err.message || '驗證失敗，請檢查帳號密碼';
+        elements.authErrorMsg.textContent = err.message || '驗證失敗，請檢查輸入內容';
         elements.authErrorMsg.classList.remove('hidden');
         showToast('驗證失敗', true);
       } finally {
         btnText.classList.remove('hidden');
         btnSpinner.classList.add('hidden');
         elements.btnSubmitAuth.disabled = false;
+        if (elements.btnActionLogin) elements.btnActionLogin.disabled = false;
+        if (elements.btnActionRegister) elements.btnActionRegister.disabled = false;
       }
+    }
+
+    // Submit form (Smart auto-detect)
+    elements.authForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      executeAuth('auto');
     });
+
+    // Explicit Action Buttons
+    if (elements.btnActionLogin) {
+      elements.btnActionLogin.addEventListener('click', () => executeAuth('login'));
+    }
+    if (elements.btnActionRegister) {
+      elements.btnActionRegister.addEventListener('click', () => executeAuth('register'));
+    }
 
     // Listen to session changes
     window.SupabaseService.onAuthStateChange(async (event, session) => {
