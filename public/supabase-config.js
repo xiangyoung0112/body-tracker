@@ -1,10 +1,9 @@
 /**
- * FitTrack - Supabase Cloud Service Layer
- * Enables 24/7 serverless operation without needing a computer running.
+ * FitTrack - Supabase Cloud Service Layer (Private Vault Edition)
+ * Highest Security: Private Storage Bucket + Signed URLs + Authentication Lock
  */
 
 const SupabaseService = (() => {
-  // Storage keys for localStorage
   const STORAGE_KEY_URL = 'fittrack_supabase_url';
   const STORAGE_KEY_KEY = 'fittrack_supabase_key';
 
@@ -16,11 +15,19 @@ const SupabaseService = (() => {
   let currentUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_URL;
   let currentKey = localStorage.getItem(STORAGE_KEY_KEY) || DEFAULT_KEY;
 
-  // Initialize client if credentials exist
+  // In-memory cache for temporary signed URLs to minimize cloud roundtrips
+  const signedUrlCache = new Map();
+
   function initClient(url, key) {
     if (url && key && window.supabase) {
       try {
-        client = window.supabase.createClient(url.trim(), key.trim());
+        client = window.supabase.createClient(url.trim(), key.trim(), {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
+        });
         currentUrl = url.trim();
         currentKey = key.trim();
         localStorage.setItem(STORAGE_KEY_URL, currentUrl);
@@ -34,7 +41,6 @@ const SupabaseService = (() => {
     return false;
   }
 
-  // Initial attempt with stored credentials
   if (currentUrl && currentKey && window.supabase) {
     initClient(currentUrl, currentKey);
   }
@@ -44,29 +50,84 @@ const SupabaseService = (() => {
       return !!client;
     },
 
+    getClient() {
+      return client;
+    },
+
     getCredentials() {
-      return {
-        url: currentUrl,
-        key: currentKey
-      };
+      return { url: currentUrl, key: currentKey };
     },
 
     saveCredentials(url, key) {
       return initClient(url, key);
     },
 
-    clearCredentials() {
-      client = null;
-      currentUrl = '';
-      currentKey = '';
-      localStorage.removeItem(STORAGE_KEY_URL);
-      localStorage.removeItem(STORAGE_KEY_KEY);
+    // ==================== AUTHENTICATION ====================
+
+    async getCurrentUser() {
+      if (!client) return null;
+      try {
+        const { data: { user } } = await client.auth.getUser();
+        return user;
+      } catch (e) {
+        return null;
+      }
     },
 
-    // Upload body photo to Supabase Storage bucket 'body-photos'
-    // Returns { publicUrl, path }
+    async getSession() {
+      if (!client) return null;
+      try {
+        const { data: { session } } = await client.auth.getSession();
+        return session;
+      } catch (e) {
+        return null;
+      }
+    },
+
+    async signIn(email, password) {
+      if (!client) throw new Error('Supabase 尚未初始化');
+      const { data, error } = await client.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim()
+      });
+      if (error) throw error;
+      return data;
+    },
+
+    async signUp(email, password) {
+      if (!client) throw new Error('Supabase 尚未初始化');
+      const { data, error } = await client.auth.signUp({
+        email: email.trim(),
+        password: password.trim()
+      });
+      if (error) throw error;
+      return data;
+    },
+
+    async signOut() {
+      if (!client) return;
+      signedUrlCache.clear();
+      await client.auth.signOut();
+    },
+
+    onAuthStateChange(callback) {
+      if (!client) return { data: { subscription: { unsubscribe: () => {} } } };
+      return client.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_OUT') {
+          signedUrlCache.clear();
+        }
+        callback(event, session);
+      });
+    },
+
+    // ==================== PRIVATE STORAGE & SIGNED URLS ====================
+
+    // Upload photo to private bucket 'body-photos'
     async uploadPhoto(blob) {
-      if (!client) throw new Error('Supabase 尚未設定');
+      if (!client) throw new Error('Supabase 尚未初始化');
+
+      const user = await this.getCurrentUser();
+      if (!user) throw new Error('請先登入專屬帳號以進行照片上傳');
 
       const fileName = `photo-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.jpg`;
 
@@ -79,32 +140,64 @@ const SupabaseService = (() => {
         });
 
       if (error) {
-        console.error('Upload photo error:', error);
+        console.error('Private upload error:', error);
         throw error;
       }
 
-      // Get public URL
-      const { data: publicUrlData } = client.storage
-        .from('body-photos')
-        .getPublicUrl(fileName);
+      // Generate initial signed URL for instant in-session display
+      const signedUrl = await this.getSignedPhotoUrl(fileName, 3600);
 
       return {
-        publicUrl: publicUrlData.publicUrl,
-        path: fileName
+        path: fileName,
+        signedUrl: signedUrl
       };
     },
 
-    // Delete photo from bucket
+    // Generate or fetch cached signed URL (valid for 1 hour)
+    async getSignedPhotoUrl(photoPath, expiresIn = 3600) {
+      if (!client || !photoPath) return null;
+
+      // Check cache (refresh if less than 5 minutes remain)
+      const cached = signedUrlCache.get(photoPath);
+      const now = Date.now();
+      if (cached && cached.expiresAt > now + 300 * 1000) {
+        return cached.url;
+      }
+
+      try {
+        const { data, error } = await client.storage
+          .from('body-photos')
+          .createSignedUrl(photoPath, expiresIn);
+
+        if (error || !data) {
+          console.warn('Failed to create signed URL for:', photoPath, error);
+          return null;
+        }
+
+        signedUrlCache.set(photoPath, {
+          url: data.signedUrl,
+          expiresAt: now + expiresIn * 1000
+        });
+
+        return data.signedUrl;
+      } catch (e) {
+        console.error('Signed URL generation error:', e);
+        return null;
+      }
+    },
+
     async deletePhoto(photoPath) {
       if (!client || !photoPath) return;
       try {
+        signedUrlCache.delete(photoPath);
         await client.storage.from('body-photos').remove([photoPath]);
       } catch (e) {
         console.warn('Failed to delete photo from storage:', e);
       }
     },
 
-    // Fetch all records
+    // ==================== DATABASE RECORDS ====================
+
     async getAllRecords(withPhotos = false) {
       if (!client) return [];
 
@@ -115,7 +208,7 @@ const SupabaseService = (() => {
         .order('id', { ascending: false });
 
       if (withPhotos) {
-        query = query.not('photo_url', 'is', null).neq('photo_url', '');
+        query = query.not('photo_path', 'is', null).neq('photo_path', '');
       }
 
       const { data, error } = await query;
@@ -123,12 +216,25 @@ const SupabaseService = (() => {
         console.error('Fetch records error:', error);
         throw error;
       }
-      return data || [];
+
+      const records = data || [];
+
+      // Resolve signed URLs for all photos in parallel
+      await Promise.all(
+        records.map(async (r) => {
+          if (r.photo_path) {
+            r.photo_url = await this.getSignedPhotoUrl(r.photo_path, 3600);
+          }
+        })
+      );
+
+      return records;
     },
 
-    // Create a new record
-    async createRecord({ weight, body_fat, record_date, note, tags, photo_url, photo_path, photo_angle }) {
-      if (!client) throw new Error('Supabase 尚未設定');
+    async createRecord({ weight, body_fat, record_date, note, tags, photo_path, photo_angle }) {
+      if (!client) throw new Error('Supabase 尚未初始化');
+
+      const user = await this.getCurrentUser();
 
       const payload = {
         weight: parseFloat(weight),
@@ -136,9 +242,9 @@ const SupabaseService = (() => {
         record_date: record_date || new Date().toISOString(),
         note: note || '',
         tags: tags || '',
-        photo_url: photo_url || null,
         photo_path: photo_path || null,
-        photo_angle: photo_angle || 'front'
+        photo_angle: photo_angle || 'front',
+        user_id: user ? user.id : null
       };
 
       const { data, error } = await client
@@ -151,14 +257,17 @@ const SupabaseService = (() => {
         throw error;
       }
 
-      return data && data[0];
+      const record = data && data[0];
+      if (record && record.photo_path) {
+        record.photo_url = await this.getSignedPhotoUrl(record.photo_path, 3600);
+      }
+
+      return record;
     },
 
-    // Delete record by ID and remove photo from bucket
     async deleteRecord(id, photoPath) {
-      if (!client) throw new Error('Supabase 尚未設定');
+      if (!client) throw new Error('Supabase 尚未初始化');
 
-      // 1. Delete from database
       const { error } = await client
         .from('weight_records')
         .delete()
@@ -169,7 +278,6 @@ const SupabaseService = (() => {
         throw error;
       }
 
-      // 2. Delete photo file from bucket
       if (photoPath) {
         await this.deletePhoto(photoPath);
       }
@@ -177,7 +285,6 @@ const SupabaseService = (() => {
       return true;
     },
 
-    // Compute stats from records and settings
     async getStats() {
       if (!client) {
         return {
@@ -208,7 +315,6 @@ const SupabaseService = (() => {
         };
       }
 
-      // Sort chronologically for calculation
       const chron = [...records].sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
       const earliest = chron[0];
       const latest = chron[chron.length - 1];
@@ -234,7 +340,6 @@ const SupabaseService = (() => {
       };
     },
 
-    // Get user settings
     async getSettings() {
       if (!client) {
         return { target_weight: '65.0', height_cm: '175.0' };
@@ -249,20 +354,24 @@ const SupabaseService = (() => {
         }
         return result;
       } catch (err) {
-        console.warn('Failed to load settings from Supabase:', err);
+        console.warn('Failed to load settings:', err);
         return { target_weight: '65.0', height_cm: '175.0' };
       }
     },
 
-    // Save user settings
     async saveSettings(settingsObj) {
-      if (!client) throw new Error('Supabase 尚未設定');
+      if (!client) throw new Error('Supabase 尚未初始化');
 
+      const user = await this.getCurrentUser();
       const entries = Object.entries(settingsObj);
       for (const [key, value] of entries) {
         await client
           .from('user_settings')
-          .upsert({ key, value: String(value) }, { onConflict: 'key' });
+          .upsert({
+            key,
+            value: String(value),
+            user_id: user ? user.id : null
+          }, { onConflict: 'key' });
       }
       return this.getSettings();
     }

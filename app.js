@@ -1,7 +1,6 @@
 /**
  * FitTrack - iOS Mobile-First Body Weight & Physique Tracker
- * Designed for iOS Safari with strict photo sandbox isolation
- * Supports Supabase 24/7 Cloud (Serverless) + Local Node.js Fallback
+ * Highest Security Edition: Private Bucket + Signed URLs + Supabase Auth Lock
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -28,6 +27,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // DOM Elements
   const elements = {
+    // Auth Screen (Private Vault Lock)
+    authScreen: document.getElementById('authScreen'),
+    appContainer: document.getElementById('app'),
+    tabBtnLogin: document.getElementById('tabBtnLogin'),
+    tabBtnRegister: document.getElementById('tabBtnRegister'),
+    authForm: document.getElementById('authForm'),
+    authEmail: document.getElementById('authEmail'),
+    authPassword: document.getElementById('authPassword'),
+    authErrorMsg: document.getElementById('authErrorMsg'),
+    btnSubmitAuth: document.getElementById('btnSubmitAuth'),
+    currentUserEmail: document.getElementById('currentUserEmail'),
+    btnSignOut: document.getElementById('btnSignOut'),
+
     // Navigation
     navTabs: document.querySelectorAll('.nav-tab'),
     tabPanes: document.querySelectorAll('.tab-pane'),
@@ -125,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
     toast: document.getElementById('toast')
   };
 
-  // Set default current date/time in datetime-local input
+  // Helper: Format local ISO string for datetime input
   function initDateTimeInput() {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
@@ -145,7 +157,120 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 2800);
   }
 
-  // Tab Navigation Handler
+  // ==================== AUTHENTICATION LOCK FLOW ====================
+  let authMode = 'login'; // 'login' or 'register'
+
+  function initAuthFlow() {
+    if (!window.SupabaseService) return;
+
+    // Switch between Login and Register
+    elements.tabBtnLogin.addEventListener('click', () => {
+      authMode = 'login';
+      elements.tabBtnLogin.classList.add('active');
+      elements.tabBtnRegister.classList.remove('active');
+      elements.btnSubmitAuth.querySelector('.btn-text').textContent = '解鎖私人保險箱';
+      elements.authErrorMsg.classList.add('hidden');
+    });
+
+    elements.tabBtnRegister.addEventListener('click', () => {
+      authMode = 'register';
+      elements.tabBtnRegister.classList.add('active');
+      elements.tabBtnLogin.classList.remove('active');
+      elements.btnSubmitAuth.querySelector('.btn-text').textContent = '建立專屬保險箱帳號';
+      elements.authErrorMsg.classList.add('hidden');
+    });
+
+    // Submit Auth Form (Sign In / Sign Up)
+    elements.authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = elements.authEmail.value.trim();
+      const password = elements.authPassword.value.trim();
+
+      if (!email || !password) return;
+
+      const btnText = elements.btnSubmitAuth.querySelector('.btn-text');
+      const btnSpinner = elements.btnSubmitAuth.querySelector('.btn-spinner');
+      btnText.classList.add('hidden');
+      btnSpinner.classList.remove('hidden');
+      elements.btnSubmitAuth.disabled = true;
+      elements.authErrorMsg.classList.add('hidden');
+
+      try {
+        if (authMode === 'register') {
+          showToast('正在建立您的私人保險箱帳號...');
+          await window.SupabaseService.signUp(email, password);
+          showToast('🎉 保險箱已建立並安全解鎖！');
+        } else {
+          showToast('正在驗證密碼...');
+          await window.SupabaseService.signIn(email, password);
+          showToast('🔓 保險箱已解鎖！');
+        }
+      } catch (err) {
+        console.error('Auth error:', err);
+        elements.authErrorMsg.textContent = err.message || '驗證失敗，請檢查帳號密碼';
+        elements.authErrorMsg.classList.remove('hidden');
+        showToast('驗證失敗', true);
+      } finally {
+        btnText.classList.remove('hidden');
+        btnSpinner.classList.add('hidden');
+        elements.btnSubmitAuth.disabled = false;
+      }
+    });
+
+    // Listen to session changes
+    window.SupabaseService.onAuthStateChange(async (event, session) => {
+      if (session && session.user) {
+        elements.authScreen.classList.add('hidden');
+        elements.appContainer.classList.remove('hidden');
+        if (elements.currentUserEmail) {
+          elements.currentUserEmail.textContent = session.user.email;
+        }
+        await loadAllData();
+      } else {
+        elements.appContainer.classList.add('hidden');
+        elements.authScreen.classList.remove('hidden');
+        if (elements.currentUserEmail) {
+          elements.currentUserEmail.textContent = '未登入';
+        }
+        state.allRecords = [];
+        state.recordsWithPhotos = [];
+        renderTimeline();
+      }
+    });
+
+    // Sign out handler
+    if (elements.btnSignOut) {
+      elements.btnSignOut.addEventListener('click', async () => {
+        if (!confirm('確定要登出私人保險箱嗎？登出後所有人均無法查看任何體態照片。')) return;
+        await window.SupabaseService.signOut();
+        showToast('已安全登出私人保險箱');
+      });
+    }
+
+    checkInitialAuth();
+  }
+
+  async function checkInitialAuth() {
+    if (!window.SupabaseService || !window.SupabaseService.isConfigured()) {
+      elements.authScreen.classList.add('hidden');
+      elements.appContainer.classList.remove('hidden');
+      return;
+    }
+
+    const session = await window.SupabaseService.getSession();
+    if (session && session.user) {
+      elements.authScreen.classList.add('hidden');
+      elements.appContainer.classList.remove('hidden');
+      if (elements.currentUserEmail) {
+        elements.currentUserEmail.textContent = session.user.email;
+      }
+    } else {
+      elements.appContainer.classList.add('hidden');
+      elements.authScreen.classList.remove('hidden');
+    }
+  }
+
+  // ==================== NAVIGATION ====================
   function initNavigation() {
     const tabTitles = {
       'tab-log': '記錄體態',
@@ -189,7 +314,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const step = parseFloat(btn.dataset.step);
         let current = parseFloat(elements.weightInput.value);
         if (isNaN(current)) {
-          // Default to latest weight or 65.0
           current = (state.stats && state.stats.latest) ? state.stats.latest.weight : 65.0;
         }
         const updated = (current + step).toFixed(1);
@@ -229,7 +353,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ==================== iOS CAMERA & PHOTO HANDLING ====================
   function initCameraCapture() {
-    // Tapping preview placeholder triggers camera input
     elements.photoPreviewContainer.addEventListener('click', (e) => {
       if (e.target.closest('#btnRetakePhoto') || e.target.closest('#btnRemovePhoto')) return;
       if (!state.selectedPhotoBlob) {
@@ -255,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         showToast('正在優化照片尺寸...');
         // Client-side image compression in RAM:
-        // Maximum dimension 1600px ensures fast mobile upload and high muscle/body definition
+        // Max dimension 1600px ensures fast mobile upload & crisp muscle/body definition
         const compressedBlob = await compressImage(file, 1600, 0.85);
         state.selectedPhotoBlob = compressedBlob;
 
@@ -270,7 +393,6 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Image compression failed:', err);
         showToast('照片處理失敗，請重試', true);
       } finally {
-        // Clear file input value
         elements.cameraInput.value = '';
       }
     });
@@ -353,14 +475,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         if (window.SupabaseService && window.SupabaseService.isConfigured()) {
-          // ========== SUPABASE CLOUD MODE ==========
-          let photoUrl = null;
+          // ========== SUPABASE PRIVATE VAULT MODE ==========
           let photoPath = null;
 
           if (state.selectedPhotoBlob) {
-            showToast('正在上傳體態相片至雲端...');
+            showToast('正在加密上傳至私人保險箱...');
             const uploadResult = await window.SupabaseService.uploadPhoto(state.selectedPhotoBlob);
-            photoUrl = uploadResult.publicUrl;
             photoPath = uploadResult.path;
           }
 
@@ -370,12 +490,11 @@ document.addEventListener('DOMContentLoaded', () => {
             record_date: recordDate,
             note: note,
             tags: tags,
-            photo_url: photoUrl,
             photo_path: photoPath,
             photo_angle: state.selectedPhotoAngle
           });
 
-          showToast('🎉 雲端記錄儲存成功！');
+          showToast('🎉 私人記錄已加密儲存！');
         } else {
           // ========== LOCAL SERVER FALLBACK MODE ==========
           const formData = new FormData();
@@ -421,7 +540,14 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadAllData() {
     try {
       if (window.SupabaseService && window.SupabaseService.isConfigured()) {
-        // Load from Supabase Cloud
+        const user = await window.SupabaseService.getCurrentUser();
+        if (!user) {
+          elements.appContainer.classList.add('hidden');
+          elements.authScreen.classList.remove('hidden');
+          return;
+        }
+
+        // Load from Supabase Private Vault
         const [records, stats, settings] = await Promise.all([
           window.SupabaseService.getAllRecords(),
           window.SupabaseService.getStats(),
@@ -429,7 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ]);
 
         state.allRecords = records || [];
-        state.recordsWithPhotos = state.allRecords.filter(r => r.photo_url || r.photo_path);
+        state.recordsWithPhotos = state.allRecords.filter(r => r.photo_path || r.photo_url);
         state.stats = stats;
         state.settings = settings;
 
@@ -463,11 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.netAddressDisplay.textContent = netRes.primaryUrl;
           }
         } catch (localErr) {
-          console.warn('Local API not available; Supabase not configured yet.');
-          // Prompt user to configure Supabase if on static web (e.g. GitHub Pages)
-          if (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
-            elements.supabaseSetupModal.classList.remove('hidden');
-          }
+          console.warn('Local API unavailable; Supabase not configured.');
         }
       }
 
@@ -679,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function getRecordPhotoUrl(record) {
     if (!record) return null;
     if (record.photo_url) return record.photo_url;
-    if (record.photo_path) return `/uploads/${record.photo_path}`;
+    if (record.photo_path && !record.photo_path.startsWith('photo-')) return `/uploads/${record.photo_path}`;
     return null;
   }
 
@@ -692,9 +814,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (list.length === 0) {
       elements.timelineContainer.innerHTML = `
         <div class="empty-state">
-          <div class="empty-icon">📅</div>
+          <div class="empty-icon">🔒</div>
           <p>${onlyPhotos ? '目前尚無體態照片記錄' : '目前尚無任何紀錄'}</p>
-          <p class="empty-sub">前往「記錄」頁面拍照登錄第一次體態吧！</p>
+          <p class="empty-sub">前往「記錄」頁面拍照登錄第一次私人體態吧！</p>
         </div>
       `;
       return;
@@ -753,7 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.stopPropagation();
         const id = btn.dataset.id;
         const photoPath = btn.dataset.path;
-        if (!confirm('確定要刪除這筆體態記錄與對應相片嗎？')) return;
+        if (!confirm('確定要從私人保險箱中刪除這筆紀錄與照片嗎？')) return;
 
         try {
           if (window.SupabaseService && window.SupabaseService.isConfigured()) {
@@ -786,7 +908,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ==================== BEFORE & AFTER COMPARISON ====================
   function initComparisonModule() {
-    // Mode switcher (Slider vs Side-by-side)
     elements.btnModeSlider.addEventListener('click', () => {
       elements.btnModeSlider.classList.add('active');
       elements.btnModeSide.classList.remove('active');
@@ -803,11 +924,9 @@ document.addEventListener('DOMContentLoaded', () => {
       state.compareMode = 'side';
     });
 
-    // Select change events
     elements.compareBeforeSelect.addEventListener('change', updateComparisonDisplay);
     elements.compareAfterSelect.addEventListener('change', updateComparisonDisplay);
 
-    // Interactive slider drag handling
     initSliderInteraction();
   }
 
@@ -820,7 +939,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Sort list chronologically: earliest to latest
     const sorted = [...list].sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
 
     const optionsHtml = sorted.map(r => {
@@ -831,7 +949,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.compareBeforeSelect.innerHTML = optionsHtml;
     elements.compareAfterSelect.innerHTML = optionsHtml;
 
-    // Default Before: oldest; Default After: newest
     elements.compareBeforeSelect.value = sorted[0].id;
     elements.compareAfterSelect.value = sorted[sorted.length - 1].id;
 
@@ -867,7 +984,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.sideBeforeInfo.textContent = `${beforeDate} • ${beforeRecord.weight} kg`;
     elements.sideAfterInfo.textContent = `${afterDate} • ${afterRecord.weight} kg`;
 
-    // Summary calculation
     const diff = parseFloat((Number(afterRecord.weight) - Number(beforeRecord.weight)).toFixed(1));
     const d1 = new Date(beforeRecord.record_date);
     const d2 = new Date(afterRecord.record_date);
@@ -896,7 +1012,6 @@ document.addEventListener('DOMContentLoaded', () => {
       itemBefore.style.width = `${percent}%`;
     }
 
-    // Touch events for iPhone Safari
     container.addEventListener('touchstart', (e) => {
       isDragging = true;
       setSliderPosition(e.touches[0].clientX);
@@ -909,7 +1024,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('touchend', () => { isDragging = false; });
 
-    // Mouse events for desktop browser
     container.addEventListener('mousedown', (e) => {
       isDragging = true;
       setSliderPosition(e.clientX);
@@ -942,7 +1056,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (elements.inputSupabaseKey) elements.inputSupabaseKey.value = creds.key;
 
       if (isConfigured) {
-        elements.supabaseStatusBadge.textContent = '☁️ 雲端運作中';
+        elements.supabaseStatusBadge.textContent = '🔒 私人桶加密連線中';
         elements.supabaseStatusBadge.style.color = '#10b981';
         elements.supabaseStatusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
         elements.supabaseStatusBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
@@ -956,7 +1070,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     refreshSupabaseStatus();
 
-    // Save from settings card
     elements.btnSaveSupabase.addEventListener('click', async () => {
       const url = elements.inputSupabaseUrl.value.trim();
       const key = elements.inputSupabaseKey.value.trim();
@@ -974,7 +1087,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Clear Supabase
     elements.btnClearSupabase.addEventListener('click', () => {
       if (!confirm('確定要清除 Supabase 雲端連線設定嗎？')) return;
       window.SupabaseService.clearCredentials();
@@ -983,7 +1095,6 @@ document.addEventListener('DOMContentLoaded', () => {
       loadAllData();
     });
 
-    // Modal save
     elements.btnModalSaveSupabase.addEventListener('click', async () => {
       const url = elements.modalInputUrl.value.trim();
       const key = elements.modalInputKey.value.trim();
@@ -994,7 +1105,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const ok = window.SupabaseService.saveCredentials(url, key);
       if (ok) {
         elements.supabaseSetupModal.classList.add('hidden');
-        showToast('🎉 Supabase 雲端已就緒，免開電腦隨時可用！');
+        showToast('🎉 Supabase 私人保險箱已就緒！');
         refreshSupabaseStatus();
         await loadAllData();
       } else {
@@ -1037,7 +1148,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Export complete data to JSON
     elements.btnExportData.addEventListener('click', () => {
       const exportData = {
         exportedAt: new Date().toISOString(),
@@ -1048,7 +1158,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `body-tracker-backup-${new Date().toISOString().substring(0, 10)}.json`;
+      a.download = `body-tracker-vault-backup-${new Date().toISOString().substring(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     });
@@ -1063,7 +1173,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       elements.qrUrlText.textContent = url;
 
-      // Render QR code
       elements.qrCanvasContainer.innerHTML = '';
       if (window.QRCode && window.QRCode.toCanvas) {
         const canvas = document.createElement('canvas');
@@ -1115,6 +1224,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initSettingsHandlers();
   initQrModal();
 
-  // Initial Load
-  loadAllData();
+  // Initialize Auth Security Lock
+  initAuthFlow();
 });

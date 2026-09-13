@@ -25,7 +25,49 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div id="app" class="ios-app">
+  <!-- Auth Screen for Private Vault -->
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-icon-wrap">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h2 class="auth-title">FitTrack 私人保險箱</h2>
+      <p class="auth-sub">最高等級隱私加密 • 只有您能解鎖體態照片</p>
+
+      <!-- Toggle Tabs: 登入 / 註冊 -->
+      <div class="auth-tabs">
+        <button type="button" id="tabBtnLogin" class="auth-tab active">登入保險箱</button>
+        <button type="button" id="tabBtnRegister" class="auth-tab">初次建立密碼</button>
+      </div>
+
+      <form id="authForm" class="auth-form">
+        <div class="auth-input-group">
+          <label for="authEmail">個人 Email / 帳號</label>
+          <input type="email" id="authEmail" placeholder="your@email.com" required autocomplete="username">
+        </div>
+        <div class="auth-input-group">
+          <label for="authPassword">密碼</label>
+          <input type="password" id="authPassword" placeholder="至少 6 位英數密碼" minlength="6" required autocomplete="current-password">
+        </div>
+
+        <div id="authErrorMsg" class="auth-error hidden"></div>
+
+        <button type="submit" id="btnSubmitAuth" class="btn-primary-gradient auth-submit-btn">
+          <span class="btn-text">解鎖私人保險箱</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </form>
+
+      <div class="auth-footer-tip">
+        🛡️ 相片桶已全加密 (Private Bucket)，未登入者無法以任何方式存取。
+      </div>
+    </div>
+  </div>
+
+  <div id="app" class="ios-app hidden">
     
     <!-- Top Header -->
     <header class="app-header">
@@ -342,6 +384,30 @@
           </div>
 
           <button type="button" id="btnSaveSettings" class="btn-secondary">儲存個人設定</button>
+        </div>
+
+        <!-- Account & Private Vault Status Card -->
+        <div class="card account-card">
+          <div class="card-header-flex">
+            <div class="card-label">🔐 私人保險箱帳號狀態</div>
+            <span class="privacy-pill" style="color: #10b981; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3)">最高機密鎖定中</span>
+          </div>
+          
+          <div class="setting-item">
+            <div class="setting-label-col">
+              <span class="setting-title">目前登入帳號</span>
+              <span id="currentUserEmail" class="setting-hint" style="color: #38bdf8; font-weight: 600;">載入中...</span>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-label-col">
+              <span class="setting-title">雲端相片桶等級</span>
+              <span class="setting-hint" style="color: #34d399;">🔒 Private 私人桶（已關閉公開網址，啟用限時簽章）</span>
+            </div>
+          </div>
+
+          <button type="button" id="btnSignOut" class="btn-secondary" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3); margin-top: 14px;">安全登出私人保險箱</button>
         </div>
 
         <!-- Supabase Cloud Config Card -->
