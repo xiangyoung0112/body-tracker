@@ -8,10 +8,13 @@ const SupabaseService = (() => {
   const STORAGE_KEY_URL = 'fittrack_supabase_url';
   const STORAGE_KEY_KEY = 'fittrack_supabase_key';
 
-  // Optional: Pre-configured defaults can be placed here if desired
+  // Pre-configured project credentials
+  const DEFAULT_URL = 'https://skwbxthrdkcdrqvzoaxy.supabase.co';
+  const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrd2J4dGhyZGtjZHJxdnpvYXh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMDg3NTksImV4cCI6MjA5ODU4NDc1OX0.7I44Rw_MsUh-pPm0LE0NPymQy01GvxnMRjder7l7kfQ';
+
   let client = null;
-  let currentUrl = localStorage.getItem(STORAGE_KEY_URL) || '';
-  let currentKey = localStorage.getItem(STORAGE_KEY_KEY) || '';
+  let currentUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_URL;
+  let currentKey = localStorage.getItem(STORAGE_KEY_KEY) || DEFAULT_KEY;
 
   // Initialize client if credentials exist
   function initClient(url, key) {
