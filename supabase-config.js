@@ -12,18 +12,40 @@ const SupabaseService = (() => {
   const DEFAULT_URL = '';
   const DEFAULT_KEY = '';
 
+  function parseActivationString(str) {
+    if (!str) return null;
+    try {
+      let clean = str.trim();
+      if (clean.includes('#')) {
+        clean = clean.split('#')[1];
+      } else if (clean.includes('?')) {
+        clean = clean.split('?')[1];
+      }
+      clean = clean.replace(/^[#?]/, '');
+      const params = new URLSearchParams(clean);
+      let vaultUrl = params.get('vault');
+      let vaultKey = params.get('k');
+      if (vaultUrl && vaultKey) {
+        return {
+          url: decodeURIComponent(vaultUrl).trim(),
+          key: decodeURIComponent(vaultKey).trim()
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to parse activation string:', e);
+    }
+    return null;
+  }
+
   // Auto-import credentials if visiting with one-time activation hash or query
   function checkUrlActivation() {
     try {
       const searchStr = window.location.hash || window.location.search;
       if (searchStr && searchStr.includes('vault=')) {
-        const clean = searchStr.replace(/^[#?]/, '');
-        const params = new URLSearchParams(clean);
-        const vaultUrl = params.get('vault');
-        const vaultKey = params.get('k');
-        if (vaultUrl && vaultKey) {
-          localStorage.setItem(STORAGE_KEY_URL, decodeURIComponent(vaultUrl));
-          localStorage.setItem(STORAGE_KEY_KEY, decodeURIComponent(vaultKey));
+        const parsed = parseActivationString(searchStr);
+        if (parsed) {
+          localStorage.setItem(STORAGE_KEY_URL, parsed.url);
+          localStorage.setItem(STORAGE_KEY_KEY, parsed.key);
           // Clean URL bar immediately
           if (window.history && window.history.replaceState) {
             window.history.replaceState(null, '', window.location.pathname);
@@ -86,6 +108,14 @@ const SupabaseService = (() => {
 
     saveCredentials(url, key) {
       return initClient(url, key);
+    },
+
+    activateFromString(str) {
+      const parsed = parseActivationString(str);
+      if (parsed) {
+        return initClient(parsed.url, parsed.key);
+      }
+      return false;
     },
 
     clearCredentials() {

@@ -30,6 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auth Screen (Private Vault Lock)
     authScreen: document.getElementById('authScreen'),
     appContainer: document.getElementById('app'),
+    vaultActivationBox: document.getElementById('vaultActivationBox'),
+    activationInput: document.getElementById('activationInput'),
+    btnApplyActivation: document.getElementById('btnApplyActivation'),
     btnActionLogin: document.getElementById('btnActionLogin'),
     btnActionRegister: document.getElementById('btnActionRegister'),
     authForm: document.getElementById('authForm'),
@@ -161,19 +164,57 @@ document.addEventListener('DOMContentLoaded', () => {
   function initAuthFlow() {
     if (!window.SupabaseService) return;
 
+    function showActivationView() {
+      elements.authScreen.classList.remove('hidden');
+      elements.appContainer.classList.add('hidden');
+      if (elements.vaultActivationBox) elements.vaultActivationBox.classList.remove('hidden');
+      if (elements.authForm) elements.authForm.classList.add('hidden');
+    }
+
+    function showAuthFormView() {
+      elements.authScreen.classList.remove('hidden');
+      elements.appContainer.classList.add('hidden');
+      if (elements.vaultActivationBox) elements.vaultActivationBox.classList.add('hidden');
+      if (elements.authForm) elements.authForm.classList.remove('hidden');
+      if (elements.authErrorMsg) elements.authErrorMsg.classList.add('hidden');
+    }
+
+    // Apply activation code / URL button
+    if (elements.btnApplyActivation) {
+      elements.btnApplyActivation.addEventListener('click', () => {
+        const val = (elements.activationInput ? elements.activationInput.value : '').trim();
+        if (!val) {
+          showToast('請先貼上專屬啟動連結或金鑰代碼', true);
+          return;
+        }
+        const ok = window.SupabaseService.activateFromString(val);
+        if (ok) {
+          showToast('🎉 保險箱已成功啟動！請建立密碼');
+          showAuthFormView();
+        } else {
+          showToast('啟動代碼格式不正確，請確認後重新貼上', true);
+        }
+      });
+    }
+
     // Helper: Execute authentication (login, register, or smart auto-detect)
     async function executeAuth(mode = 'auto') {
       const email = elements.authEmail.value.trim();
       const password = elements.authPassword.value.trim();
 
       if (!email || !password) {
-        elements.authErrorMsg.textContent = '請輸入個人 Email 與密碼';
+        elements.authErrorMsg.textContent = '請先輸入個人 Email 與密碼';
         elements.authErrorMsg.classList.remove('hidden');
+        if (!email) elements.authEmail.focus();
+        else elements.authPassword.focus();
+        showToast('請輸入 Email 與密碼', true);
         return;
       }
       if (password.length < 6) {
         elements.authErrorMsg.textContent = '密碼長度至少需 6 個字元';
         elements.authErrorMsg.classList.remove('hidden');
+        elements.authPassword.focus();
+        showToast('密碼長度至少需 6 個字元', true);
         return;
       }
 
@@ -188,8 +229,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         if (mode === 'register') {
-          showToast('正在建立您的私人保險箱帳號...');
+          showToast('正在建立您的專屬私人保險箱...');
           await window.SupabaseService.signUp(email, password);
+          try {
+            await window.SupabaseService.signIn(email, password);
+          } catch (e) {}
           showToast('🎉 保險箱帳號已建立並安全解鎖！');
         } else if (mode === 'login') {
           showToast('正在驗證密碼...');
@@ -203,9 +247,12 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('🔓 保險箱已解鎖！');
           } catch (loginErr) {
             const msg = (loginErr.message || '').toLowerCase();
-            if (msg.includes('invalid login credentials') || msg.includes('user not found')) {
+            if (msg.includes('invalid login credentials') || msg.includes('user not found') || msg.includes('invalid_grant')) {
               showToast('初次使用，正在為您建立專屬保險箱...');
               await window.SupabaseService.signUp(email, password);
+              try {
+                await window.SupabaseService.signIn(email, password);
+              } catch (e) {}
               showToast('🎉 專屬保險箱建立成功，已解鎖！');
             } else {
               throw loginErr;
@@ -216,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Auth error:', err);
         elements.authErrorMsg.textContent = err.message || '驗證失敗，請檢查輸入內容';
         elements.authErrorMsg.classList.remove('hidden');
-        showToast('驗證失敗', true);
+        showToast(err.message || '驗證失敗', true);
       } finally {
         btnText.classList.remove('hidden');
         btnSpinner.classList.add('hidden');
@@ -275,6 +322,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function checkInitialAuth() {
     if (!window.SupabaseService || !window.SupabaseService.isConfigured()) {
+      const isGitHubPages = window.location.hostname.includes('github.io') || window.location.protocol === 'https:';
+      if (isGitHubPages) {
+        elements.authScreen.classList.remove('hidden');
+        elements.appContainer.classList.add('hidden');
+        if (elements.vaultActivationBox) elements.vaultActivationBox.classList.remove('hidden');
+        if (elements.authForm) elements.authForm.classList.add('hidden');
+        return;
+      }
       elements.authScreen.classList.add('hidden');
       elements.appContainer.classList.remove('hidden');
       return;
@@ -290,6 +345,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       elements.appContainer.classList.add('hidden');
       elements.authScreen.classList.remove('hidden');
+      if (elements.vaultActivationBox) elements.vaultActivationBox.classList.add('hidden');
+      if (elements.authForm) elements.authForm.classList.remove('hidden');
     }
   }
 

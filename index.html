@@ -35,7 +35,23 @@
         </svg>
       </div>
       <h2 class="auth-title">FitTrack 私人保險箱</h2>
-      <p class="auth-sub">最高等級隱私加密 • 只有您能解鎖體態照片</p>
+      <!-- Unconfigured Vault Box (Shown only if not activated yet) -->
+      <div id="vaultActivationBox" class="hidden" style="text-align: left; margin: 16px 0;">
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
+          <div style="font-size: 14px; font-weight: 600; color: #38bdf8; margin-bottom: 6px;">🔐 專屬保險箱待啟動</div>
+          <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+            GitHub 公開代碼中未保留連線金鑰。<br>
+            請點擊您的<strong>專屬一次性啟動連結</strong>，或在下方貼上啟用代碼以連接雲端資料庫。
+          </p>
+        </div>
+        <div class="auth-input-group">
+          <label for="activationInput">啟動連結或代碼</label>
+          <input type="text" id="activationInput" placeholder="在此貼上專屬啟動連結..." autocomplete="off">
+        </div>
+        <button type="button" id="btnApplyActivation" class="btn-primary-gradient auth-submit-btn" style="margin-top: 10px;">
+          <span class="btn-text">⚡ 立即啟動連線</span>
+        </button>
+      </div>
 
       <form id="authForm" class="auth-form">
         <div class="auth-input-group">
