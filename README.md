@@ -29,29 +29,32 @@
 
 ---
 
-## 🚀 啟動方式
+## 🌐 線上正式網址（24 小時免開電腦）
 
-### 方法一：Windows 一鍵雙擊啟動
-在專案資料夾中，直接對 `啟動體態記錄.bat` 連按兩下即可啟動！
+👉 **[https://xiangyoung0112.github.io/body-tracker/](https://xiangyoung0112.github.io/body-tracker/)**
 
-### 方法二：終端機啟動
-```bash
-npm start
-```
-
-啟動後：
-- 電腦本機網址：`http://localhost:3000`
-- 手機連線網址：`http://<您的電腦區域網路IP>:3000`（伺服器終端會自動顯示您的 IP 與 QR Code）
+無論電腦有沒有開機，直接用 iPhone Safari 打開上方網址即可隨時記錄！
 
 ---
 
-## 📲 如何在 iPhone 上設定為獨立 App
+## ☁️ Supabase 3 步驟快速綁定（免開電腦）
 
-1. 確認 iPhone 與電腦連接到**同一個 Wi-Fi**。
-2. 用 iPhone 相機掃描終端機顯示的 QR Code，或在 Safari 輸入連線網址。
-3. 在 Safari 底部工具列點擊「**分享**」按鈕（方框帶向上箭頭）。
-4. 向下滑動並選擇「**加入主畫面**」。
-5. 點擊右上角「新增」，桌面便會出現「體態記錄」App 圖示，隨點即開！
+本系統使用 Supabase 免費提供之資料庫與雲端相片桶：
+1. 前往 [Supabase 官網](https://supabase.com) 免費註冊並點擊「New Project」建立專案。
+2. 進入專案後，點選左側選單的 **SQL Editor**，開啟專案目錄下的 `supabase_setup.sql` 複製全部內容貼上，點擊「**Run**」執行。
+3. 進入左下角 **Project Settings > API**，複製：
+   - **Project URL**（專案網址）
+   - **anon public key**（公開金鑰）
+4. 在手機打開網頁，貼上上述兩項資訊，點擊「確認連線」，即永久綁定完成！
+
+---
+
+## 📲 如何在 iPhone 上設定為全螢幕 App (PWA)
+
+1. 用 iPhone Safari 開啟：`https://xiangyoung0112.github.io/body-tracker/`
+2. 點擊 Safari 底部工具列中間的「**分享**」圖示（方框向上箭頭）。
+3. 向下滑動找到並點擊「**加入主畫面**」。
+4. 點擊右上角「新增」，手機桌面即會產生「體態記錄」App 圖示，點開即可全螢幕無網址列操作！
 
 ---
 
