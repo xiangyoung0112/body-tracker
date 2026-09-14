@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <!-- Optimized for iOS Safari: prevents scaling on input focus and accounts for Dynamic Island & Home Bar -->
+  
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -10,22 +10,20 @@
   <meta name="theme-color" content="#0f172a">
   <title>體態與體重記錄 | FitTrack</title>
 
-  <!-- PWA Manifest & App Icons -->
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 
-  <!-- Chart.js CDN for interactive weight curve -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- QRCode CDN for instant iPhone pairing -->
+  
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-  <!-- Supabase JS Client for 24/7 Serverless Operation -->
+  
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./supabase-config.js"></script>
 
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <!-- Auth Screen for Private Vault -->
+  
   <div id="authScreen" class="auth-screen">
     <div class="auth-card">
       <div class="auth-icon-wrap">
@@ -35,7 +33,7 @@
         </svg>
       </div>
       <h2 class="auth-title">FitTrack 私人保險箱</h2>
-      <!-- Unconfigured Vault Box (Shown only if not activated yet) -->
+      
       <div id="vaultActivationBox" class="hidden" style="text-align: left; margin: 16px 0;">
         <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
           <div style="font-size: 14px; font-weight: 600; color: #38bdf8; margin-bottom: 6px;">🔐 專屬保險箱待啟動</div>
@@ -65,7 +63,6 @@
 
         <div id="authErrorMsg" class="auth-error hidden"></div>
 
-        <!-- Smart Action: One Button That Handles Both Login and First-Time Signup Automatically! -->
         <button type="submit" id="btnSubmitAuth" class="btn-primary-gradient auth-submit-btn">
           <span class="btn-text">🚀 進入私人保險箱 (自動識別/註冊)</span>
           <span class="btn-spinner hidden"></span>
@@ -84,8 +81,7 @@
   </div>
 
   <div id="app" class="ios-app hidden">
-    
-    <!-- Top Header -->
+
     <header class="app-header">
       <div class="header-left">
         <span class="brand-badge">FitTrack</span>
@@ -106,22 +102,18 @@
       </div>
     </header>
 
-    <!-- Main Content Container with Tabs -->
     <main class="app-content">
 
-      <!-- ================= TAB 1: 記錄 (Log) ================= -->
       <section id="tab-log" class="tab-pane active">
         <form id="recordForm" class="form-container">
-          
-          <!-- Weight Input Hero Card -->
+
           <div class="card weight-card">
             <div class="card-label">今日體重 (KG)</div>
             <div class="weight-input-group">
               <input type="number" id="weightInput" step="0.1" min="20" max="300" placeholder="00.0" required autofocus>
               <span class="weight-unit">kg</span>
             </div>
-            
-            <!-- Quick adjustment buttons for easy thumb tapping -->
+
             <div class="quick-steppers">
               <button type="button" class="step-btn" data-step="-0.5">-0.5</button>
               <button type="button" class="step-btn" data-step="-0.1">-0.1</button>
@@ -130,7 +122,6 @@
             </div>
           </div>
 
-          <!-- Body Fat & Date Section -->
           <div class="form-row-grid">
             <div class="card mini-card">
               <label for="bodyFatInput" class="card-sublabel">體脂率 (選填)</label>
@@ -145,7 +136,6 @@
             </div>
           </div>
 
-          <!-- Camera & Photo Section (Direct iOS Sandbox Trigger) -->
           <div class="card photo-card">
             <div class="card-header-flex">
               <div class="card-label">📸 體態照片</div>
@@ -159,7 +149,6 @@
               <span>防護機制生效中：照片拍完直達後端電腦，手機相簿無殘留。</span>
             </div>
 
-            <!-- Angle Selector -->
             <div class="angle-selector">
               <label class="angle-radio">
                 <input type="radio" name="photoAngle" value="front" checked>
@@ -175,11 +164,8 @@
               </label>
             </div>
 
-            <!-- Native File Input with capture="environment" -->
-            <!-- In iOS Safari, capture="environment" launches camera directly and DOES NOT save to Camera Roll -->
             <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden-file-input">
 
-            <!-- Photo Preview Area / Trigger Button -->
             <div id="photoPreviewContainer" class="photo-preview-box">
               <div id="photoPlaceholder" class="photo-placeholder">
                 <div class="shutter-icon-wrap">
@@ -192,7 +178,6 @@
                 <div class="placeholder-sub">直接調用鏡頭，拍完即上傳</div>
               </div>
 
-              <!-- Active Image Preview once taken -->
               <div id="photoPreviewWrapper" class="preview-wrapper hidden">
                 <img id="photoPreviewImg" src="" alt="體態預覽">
                 <div class="preview-overlay">
@@ -210,7 +195,6 @@
             </div>
           </div>
 
-          <!-- Quick Tags & Notes -->
           <div class="card notes-card">
             <div class="card-label">備註與情境標籤</div>
             <div class="tag-chips">
@@ -224,7 +208,6 @@
             <textarea id="noteInput" rows="2" placeholder="備註今日飲食、訓練感受或體態心情..." maxlength="300"></textarea>
           </div>
 
-          <!-- Submit Button -->
           <div class="submit-action-bar">
             <button type="submit" id="btnSubmitRecord" class="btn-primary-gradient">
               <span class="btn-text">儲存體態記錄</span>
@@ -234,10 +217,8 @@
         </form>
       </section>
 
-      <!-- ================= TAB 2: 趨勢 (Trends) ================= -->
       <section id="tab-trends" class="tab-pane">
-        
-        <!-- Summary Stat Cards -->
+
         <div class="stats-grid">
           <div class="stat-card">
             <span class="stat-title">當前最新</span>
@@ -261,7 +242,6 @@
           </div>
         </div>
 
-        <!-- Chart Section -->
         <div class="card chart-card">
           <div class="chart-header">
             <span class="card-label">體重變化曲線</span>
@@ -279,7 +259,6 @@
 
       </section>
 
-      <!-- ================= TAB 3: 時間軸 (Timeline) ================= -->
       <section id="tab-timeline" class="tab-pane">
         <div class="timeline-filter-bar">
           <span id="timelineCountText">共 0 筆記錄</span>
@@ -289,7 +268,6 @@
           </label>
         </div>
 
-        <!-- Timeline Stream Cards -->
         <div id="timelineContainer" class="timeline-feed">
           <div class="empty-state">
             <div class="empty-icon">📅</div>
@@ -299,7 +277,6 @@
         </div>
       </section>
 
-      <!-- ================= TAB 4: 前後對比 (Before & After) ================= -->
       <section id="tab-compare" class="tab-pane">
         <div class="card compare-header-card">
           <div class="card-label">⚖️ 體態前後對比 (Before & After)</div>
@@ -322,14 +299,12 @@
           </div>
         </div>
 
-        <!-- Split / Interactive Comparison Stage -->
         <div id="compareStage" class="card compare-stage-card">
           <div class="compare-mode-toggle">
             <button type="button" id="btnModeSlider" class="compare-tab-btn active">滑動比對</button>
             <button type="button" id="btnModeSide" class="compare-tab-btn">並排比對</button>
           </div>
 
-          <!-- Mode 1: Interactive Slider Comparison -->
           <div id="sliderCompareView" class="comparison-slider-container">
             <div class="comparison-item item-after">
               <img id="imgCompareAfter" src="" alt="After">
@@ -339,7 +314,7 @@
               <img id="imgCompareBefore" src="" alt="Before">
               <div class="photo-tag before-tag">BEFORE <span id="tagBeforeDate"></span></div>
             </div>
-            <!-- Interactive Draggable Divider -->
+            
             <div class="slider-divider" id="sliderDivider">
               <div class="slider-handle">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -350,7 +325,6 @@
             </div>
           </div>
 
-          <!-- Mode 2: Side-by-side View -->
           <div id="sideCompareView" class="side-by-side-container hidden">
             <div class="side-box">
               <div class="side-img-wrap">
@@ -374,7 +348,6 @@
         </div>
       </section>
 
-      <!-- ================= TAB 5: 設定 (Settings) ================= -->
       <section id="tab-settings" class="tab-pane">
         <div class="card">
           <div class="card-label">個人身材目標設定</div>
@@ -402,7 +375,6 @@
           <button type="button" id="btnSaveSettings" class="btn-secondary">儲存個人設定</button>
         </div>
 
-        <!-- Account & Private Vault Status Card -->
         <div class="card account-card">
           <div class="card-header-flex">
             <div class="card-label">🔐 私人保險箱帳號狀態</div>
@@ -426,7 +398,6 @@
           <button type="button" id="btnSignOut" class="btn-secondary" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3); margin-top: 14px;">安全登出私人保險箱</button>
         </div>
 
-        <!-- Supabase Cloud Config Card -->
         <div class="card supabase-card">
           <div class="card-header-flex">
             <div class="card-label">☁️ Supabase 雲端連線 (免開電腦)</div>
@@ -450,7 +421,6 @@
           </div>
         </div>
 
-        <!-- Phone Connection Guide & QR Card -->
         <div class="card connection-card">
           <div class="card-label">📱 iPhone 連線與無痕隱私說明</div>
           <div class="info-list">
@@ -479,7 +449,6 @@
           </div>
         </div>
 
-        <!-- Data Export -->
         <div class="card">
           <div class="card-label">資料庫與備份</div>
           <p class="setting-hint" style="margin-bottom: 12px;">照片檔案完整存放在電腦本地 <code>data/uploads/</code> 目錄中。</p>
@@ -489,7 +458,6 @@
 
     </main>
 
-    <!-- Modal for High-Res Photo Viewing -->
     <div id="photoModal" class="modal-backdrop hidden">
       <div class="modal-dialog">
         <button type="button" id="btnCloseModal" class="btn-close-modal">✕</button>
@@ -500,7 +468,6 @@
       </div>
     </div>
 
-    <!-- Quick Scan QR Modal -->
     <div id="qrModal" class="modal-backdrop hidden">
       <div class="modal-dialog qr-dialog">
         <button type="button" id="btnCloseQrModal" class="btn-close-modal">✕</button>
@@ -514,7 +481,6 @@
       </div>
     </div>
 
-    <!-- Supabase Setup Wizard Modal -->
     <div id="supabaseSetupModal" class="modal-backdrop hidden">
       <div class="modal-dialog qr-dialog" style="text-align: left; padding: 24px;">
         <button type="button" id="btnCloseSupabaseModal" class="btn-close-modal">✕</button>
@@ -541,7 +507,6 @@
       </div>
     </div>
 
-    <!-- Bottom Navigation Bar (Apple Health Style) -->
     <nav class="bottom-nav-bar">
       <button type="button" class="nav-tab active" data-tab="tab-log">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -586,7 +551,6 @@
       </button>
     </nav>
 
-    <!-- Toast Notification Container -->
     <div id="toast" class="toast hidden"></div>
   </div>
 

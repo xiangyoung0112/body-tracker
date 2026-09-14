@@ -1,10 +1,4 @@
-/**
- * FitTrack - iOS Mobile-First Body Weight & Physique Tracker
- * Highest Security Edition: Private Bucket + Signed URLs + Supabase Auth Lock
- */
-
 document.addEventListener('DOMContentLoaded', () => {
-  // Application State
   const state = {
     currentTab: 'tab-log',
     allRecords: [],
@@ -25,9 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sliderPos: 50 // percentage
   };
 
-  // DOM Elements
   const elements = {
-    // Auth Screen (Private Vault Lock)
     authScreen: document.getElementById('authScreen'),
     appContainer: document.getElementById('app'),
     vaultActivationBox: document.getElementById('vaultActivationBox'),
@@ -43,13 +35,11 @@ document.addEventListener('DOMContentLoaded', () => {
     currentUserEmail: document.getElementById('currentUserEmail'),
     btnSignOut: document.getElementById('btnSignOut'),
 
-    // Navigation
     navTabs: document.querySelectorAll('.nav-tab'),
     tabPanes: document.querySelectorAll('.tab-pane'),
     headerTitle: document.getElementById('headerTitle'),
     btnQuickScan: document.getElementById('btnQuickScan'),
     
-    // Log Form
     recordForm: document.getElementById('recordForm'),
     weightInput: document.getElementById('weightInput'),
     bodyFatInput: document.getElementById('bodyFatInput'),
@@ -60,7 +50,6 @@ document.addEventListener('DOMContentLoaded', () => {
     angleRadios: document.querySelectorAll('input[name="photoAngle"]'),
     btnSubmitRecord: document.getElementById('btnSubmitRecord'),
     
-    // Camera & Photo Elements
     cameraInput: document.getElementById('cameraInput'),
     photoPreviewContainer: document.getElementById('photoPreviewContainer'),
     photoPlaceholder: document.getElementById('photoPlaceholder'),
@@ -70,7 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnRetakePhoto: document.getElementById('btnRetakePhoto'),
     btnRemovePhoto: document.getElementById('btnRemovePhoto'),
 
-    // Trends / Stats
     statLatestWeight: document.getElementById('statLatestWeight'),
     statDate: document.getElementById('statDate'),
     statChange: document.getElementById('statChange'),
@@ -83,12 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
     rangeBtns: document.querySelectorAll('.range-btn'),
     weightChartCanvas: document.getElementById('weightChart'),
 
-    // Timeline
     timelineContainer: document.getElementById('timelineContainer'),
     timelineCountText: document.getElementById('timelineCountText'),
     filterPhotosOnly: document.getElementById('filterPhotosOnly'),
 
-    // Comparison
     compareBeforeSelect: document.getElementById('compareBeforeSelect'),
     compareAfterSelect: document.getElementById('compareAfterSelect'),
     compareSummaryBadge: document.getElementById('compareSummaryBadge'),
@@ -109,14 +95,12 @@ document.addEventListener('DOMContentLoaded', () => {
     sideBeforeInfo: document.getElementById('sideBeforeInfo'),
     sideAfterInfo: document.getElementById('sideAfterInfo'),
 
-    // Settings
     settingHeight: document.getElementById('settingHeight'),
     settingTargetWeight: document.getElementById('settingTargetWeight'),
     btnSaveSettings: document.getElementById('btnSaveSettings'),
     btnExportData: document.getElementById('btnExportData'),
     netAddressDisplay: document.getElementById('netAddressDisplay'),
 
-    // Supabase Settings & Modal
     supabaseStatusBadge: document.getElementById('supabaseStatusBadge'),
     inputSupabaseUrl: document.getElementById('inputSupabaseUrl'),
     inputSupabaseKey: document.getElementById('inputSupabaseKey'),
@@ -128,7 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnModalSaveSupabase: document.getElementById('btnModalSaveSupabase'),
     btnCloseSupabaseModal: document.getElementById('btnCloseSupabaseModal'),
 
-    // Modals & Toast
     photoModal: document.getElementById('photoModal'),
     modalImg: document.getElementById('modalImg'),
     modalDetails: document.getElementById('modalDetails'),
@@ -140,7 +123,6 @@ document.addEventListener('DOMContentLoaded', () => {
     toast: document.getElementById('toast')
   };
 
-  // Helper: Format local ISO string for datetime input
   function initDateTimeInput() {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
@@ -148,7 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.recordDateInput.value = localIso;
   }
 
-  // Toast notification helper
   let toastTimer = null;
   function showToast(message, isError = false) {
     if (toastTimer) clearTimeout(toastTimer);
@@ -160,7 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 2800);
   }
 
-  // ==================== AUTHENTICATION LOCK FLOW ====================
   function initAuthFlow() {
     if (!window.SupabaseService) return;
 
@@ -179,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (elements.authErrorMsg) elements.authErrorMsg.classList.add('hidden');
     }
 
-    // Apply activation code / URL button
     if (elements.btnApplyActivation) {
       elements.btnApplyActivation.addEventListener('click', () => {
         const val = (elements.activationInput ? elements.activationInput.value : '').trim();
@@ -197,7 +176,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Helper: Execute authentication (login, register, or smart auto-detect)
     async function executeAuth(mode = 'auto') {
       const email = elements.authEmail.value.trim();
       const password = elements.authPassword.value.trim();
@@ -239,7 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('正在驗證密碼...');
           authResult = await window.SupabaseService.signIn(email, password);
         } else {
-          // AUTO mode: Try sign in first. If user doesn't exist, automatically sign up!
           showToast('正在驗證並解鎖私人保險箱...');
           try {
             authResult = await window.SupabaseService.signIn(email, password);
@@ -257,7 +234,6 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
 
-        // Verify session and unlock UI immediately
         const session = await window.SupabaseService.getSession();
         if (session && session.user) {
           elements.authScreen.classList.add('hidden');
@@ -284,13 +260,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Submit form (Smart auto-detect)
     elements.authForm.addEventListener('submit', (e) => {
       e.preventDefault();
       executeAuth('auto');
     });
 
-    // Explicit Action Buttons
     if (elements.btnActionLogin) {
       elements.btnActionLogin.addEventListener('click', () => executeAuth('login'));
     }
@@ -298,7 +272,6 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.btnActionRegister.addEventListener('click', () => executeAuth('register'));
     }
 
-    // Listen to session changes
     window.SupabaseService.onAuthStateChange(async (event, session) => {
       if (session && session.user) {
         elements.authScreen.classList.add('hidden');
@@ -319,7 +292,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Sign out handler
     if (elements.btnSignOut) {
       elements.btnSignOut.addEventListener('click', async () => {
         if (!confirm('確定要登出私人保險箱嗎？登出後所有人均無法查看任何體態照片。')) return;
@@ -361,7 +333,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ==================== NAVIGATION ====================
   function initNavigation() {
     const tabTitles = {
       'tab-log': '記錄體態',
@@ -386,7 +357,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.currentTab = targetTabId;
         elements.headerTitle.textContent = tabTitles[targetTabId] || '體態記錄';
 
-        // Trigger tab-specific refresh
         if (targetTabId === 'tab-trends') {
           renderChart(state.chartRange);
         } else if (targetTabId === 'tab-compare') {
@@ -398,7 +368,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Stepper buttons for weight adjustment (+/- 0.1, +/- 0.5)
   function initSteppers() {
     elements.stepBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -413,7 +382,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Quick tag toggling
   function initTagChips() {
     elements.tagChips.forEach(chip => {
       chip.addEventListener('click', () => {
@@ -429,7 +397,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Photo Angle Selector
   function initAngleSelector() {
     const angleMap = { front: '正面', side: '側面', back: '背面' };
     elements.angleRadios.forEach(radio => {
@@ -442,7 +409,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ==================== iOS CAMERA & PHOTO HANDLING ====================
   function initCameraCapture() {
     elements.photoPreviewContainer.addEventListener('click', (e) => {
       if (e.target.closest('#btnRetakePhoto') || e.target.closest('#btnRemovePhoto')) return;
@@ -461,19 +427,15 @@ document.addEventListener('DOMContentLoaded', () => {
       clearPhotoPreview();
     });
 
-    // Handle photo taken via native iOS Safari sandbox
     elements.cameraInput.addEventListener('change', async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
 
       try {
         showToast('正在優化照片尺寸...');
-        // Client-side image compression in RAM:
-        // Max dimension 1600px ensures fast mobile upload & crisp muscle/body definition
         const compressedBlob = await compressImage(file, 1600, 0.85);
         state.selectedPhotoBlob = compressedBlob;
 
-        // Preview in UI
         const previewUrl = URL.createObjectURL(compressedBlob);
         elements.photoPreviewImg.src = previewUrl;
         elements.photoPlaceholder.classList.add('hidden');
@@ -489,7 +451,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Helper: client-side image compression using in-memory Canvas
   function compressImage(file, maxDimension = 1600, quality = 0.85) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -540,7 +501,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.cameraInput.value = '';
   }
 
-  // ==================== FORM SUBMISSION ====================
   function initFormSubmit() {
     elements.recordForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -557,7 +517,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const note = elements.noteInput.value.trim();
       const tags = Array.from(state.selectedTags).join(',');
 
-      // UI Loading state
       const btnText = elements.btnSubmitRecord.querySelector('.btn-text');
       const btnSpinner = elements.btnSubmitRecord.querySelector('.btn-spinner');
       btnText.classList.add('hidden');
@@ -566,7 +525,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         if (window.SupabaseService && window.SupabaseService.isConfigured()) {
-          // ========== SUPABASE PRIVATE VAULT MODE ==========
           let photoPath = null;
 
           if (state.selectedPhotoBlob) {
@@ -587,7 +545,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
           showToast('🎉 私人記錄已加密儲存！');
         } else {
-          // ========== LOCAL SERVER FALLBACK MODE ==========
           const formData = new FormData();
           formData.append('weight', weight);
           if (bodyFat !== null) formData.append('body_fat', bodyFat);
@@ -606,14 +563,12 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('🎉 本機記錄儲存成功！');
         }
 
-        // Reset form inputs
         elements.noteInput.value = '';
         state.selectedTags.clear();
         elements.tagChips.forEach(c => c.classList.remove('active'));
         clearPhotoPreview();
         initDateTimeInput();
 
-        // Refresh view data
         await loadAllData();
 
       } catch (err) {
@@ -627,7 +582,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ==================== DATA FETCHING ====================
   async function loadAllData() {
     try {
       if (window.SupabaseService && window.SupabaseService.isConfigured()) {
@@ -638,7 +592,6 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        // Load from Supabase Private Vault
         const [records, stats, settings] = await Promise.all([
           window.SupabaseService.getAllRecords(),
           window.SupabaseService.getStats(),
@@ -654,7 +607,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSettingsView();
 
       } else {
-        // Fallback: try local server
         try {
           const [recordsRes, statsRes, settingsRes, netRes] = await Promise.all([
             fetch('/api/records').then(r => r.json()),
@@ -684,12 +636,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // If weight input is empty, prefill with latest weight
       if (!elements.weightInput.value && state.stats && state.stats.latest) {
         elements.weightInput.value = state.stats.latest.weight.toFixed(1);
       }
 
-      // Re-render UI components
       renderTimeline();
       if (state.currentTab === 'tab-trends') {
         renderChart(state.chartRange);
@@ -701,7 +651,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ==================== STATS VIEW ====================
   function updateStatsView() {
     const s = state.stats;
     if (!s || !s.latest) {
@@ -715,17 +664,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Latest Weight
     elements.statLatestWeight.textContent = Number(s.latest.weight).toFixed(1);
     elements.statDate.textContent = s.latest.record_date.replace('T', ' ');
 
-    // Total Weight Change
     const diff = s.weight_change;
     elements.statChange.textContent = (diff > 0 ? `+${diff.toFixed(1)}` : `${diff.toFixed(1)}`);
     elements.statChangeWrap.className = 'stat-value ' + (diff < 0 ? 'stat-diff-neg' : (diff > 0 ? 'stat-diff-pos' : ''));
     elements.statFromStart.textContent = `起始: ${s.earliest ? Number(s.earliest.weight).toFixed(1) : '--'} kg`;
 
-    // Target Gap
     const target = s.target_weight || 65.0;
     const gap = s.latest.weight - target;
     elements.statTargetVal.textContent = `目標: ${Number(target).toFixed(1)} kg`;
@@ -735,7 +681,6 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.statToTarget.textContent = `達成! 🎉`;
     }
 
-    // BMI Calculation
     const heightM = (s.height_cm || 175) / 100;
     const bmi = (s.latest.weight / (heightM * heightM)).toFixed(1);
     elements.statBmi.textContent = bmi;
@@ -756,7 +701,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.statBmiCategory.className = 'stat-sub ' + catClass;
   }
 
-  // ==================== CHART.JS RENDERING ====================
   function initChartControls() {
     elements.rangeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -774,7 +718,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let records = [...state.allRecords];
     if (records.length === 0) return;
 
-    // Filter by days
     const now = new Date();
     if (daysRange !== 'all') {
       const days = parseInt(daysRange, 10);
@@ -782,7 +725,6 @@ document.addEventListener('DOMContentLoaded', () => {
       records = records.filter(r => new Date(r.record_date) >= cutoff);
     }
 
-    // Sort chronologically (oldest to newest for line chart)
     records.sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
 
     const labels = records.map(r => {
@@ -795,7 +737,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const ctx = elements.weightChartCanvas.getContext('2d');
 
-    // Create gradient fill
     const gradient = ctx.createLinearGradient(0, 0, 0, 240);
     gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
     gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
@@ -882,7 +823,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ==================== TIMELINE VIEW ====================
   function initTimelineFilter() {
     elements.filterPhotosOnly.addEventListener('change', () => {
       renderTimeline();
@@ -951,7 +891,6 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }).join('');
 
-    // Attach click event for photos (opens modal)
     elements.timelineContainer.querySelectorAll('.timeline-photo-wrap').forEach(wrap => {
       wrap.addEventListener('click', () => {
         const photoUrl = wrap.dataset.photo;
@@ -960,7 +899,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Attach click event for delete buttons
     elements.timelineContainer.querySelectorAll('.btn-delete-record').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -997,7 +935,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.modalImg.src = '';
   }
 
-  // ==================== BEFORE & AFTER COMPARISON ====================
   function initComparisonModule() {
     elements.btnModeSlider.addEventListener('click', () => {
       elements.btnModeSlider.classList.add('active');
@@ -1063,13 +1000,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const beforeDate = beforeRecord.record_date.substring(0, 10);
     const afterDate = afterRecord.record_date.substring(0, 10);
 
-    // Slider View
     elements.imgCompareBefore.src = beforeUrl;
     elements.imgCompareAfter.src = afterUrl;
     elements.tagBeforeDate.textContent = `${beforeDate} (${beforeRecord.weight}kg)`;
     elements.tagAfterDate.textContent = `${afterDate} (${afterRecord.weight}kg)`;
 
-    // Side-by-side View
     elements.imgSideBefore.src = beforeUrl;
     elements.imgSideAfter.src = afterUrl;
     elements.sideBeforeInfo.textContent = `${beforeDate} • ${beforeRecord.weight} kg`;
@@ -1128,7 +1063,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('mouseup', () => { isDragging = false; });
   }
 
-  // ==================== SETTINGS & SUPABASE CONFIG ====================
   function updateSettingsView() {
     if (state.settings) {
       elements.settingHeight.value = state.settings.height_cm || '175';
@@ -1255,7 +1189,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ==================== QUICK SCAN QR MODAL ====================
   function initQrModal() {
     elements.btnQuickScan.addEventListener('click', () => {
       let url = window.location.href;
@@ -1290,7 +1223,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Helper to escape HTML tags
   function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;')
@@ -1300,7 +1232,6 @@ document.addEventListener('DOMContentLoaded', () => {
               .replace(/'/g, '&#039;');
   }
 
-  // Initialize All Modules
   initDateTimeInput();
   initNavigation();
   initSteppers();
@@ -1315,6 +1246,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initSettingsHandlers();
   initQrModal();
 
-  // Initialize Auth Security Lock
   initAuthFlow();
 });

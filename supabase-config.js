@@ -1,9 +1,3 @@
-/**
- * FitTrack - Supabase Cloud Service Layer (Private Vault Edition)
- * Security: Keys are hidden from GitHub and stored locally in device localStorage.
- * Supports One-Time URL Activation (#vault=URL&k=KEY).
- */
-
 window.SupabaseService = (() => {
   const STORAGE_KEY_URL = 'fittrack_supabase_url';
   const STORAGE_KEY_KEY = 'fittrack_supabase_key';
@@ -36,7 +30,6 @@ window.SupabaseService = (() => {
     return null;
   }
 
-  // Auto-import credentials if visiting with one-time activation hash or query
   function checkUrlActivation() {
     try {
       const searchStr = window.location.hash || window.location.search;
@@ -45,7 +38,6 @@ window.SupabaseService = (() => {
         if (parsed) {
           localStorage.setItem(STORAGE_KEY_URL, parsed.url);
           localStorage.setItem(STORAGE_KEY_KEY, parsed.key);
-          // Clean URL bar immediately
           if (window.history && window.history.replaceState) {
             window.history.replaceState(null, '', window.location.pathname);
           }
@@ -62,7 +54,6 @@ window.SupabaseService = (() => {
   let currentUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_URL;
   let currentKey = localStorage.getItem(STORAGE_KEY_KEY) || DEFAULT_KEY;
 
-  // In-memory cache for temporary signed URLs
   const signedUrlCache = new Map();
 
   function initClient(url, key) {
@@ -126,8 +117,6 @@ window.SupabaseService = (() => {
       signedUrlCache.clear();
     },
 
-    // ==================== AUTHENTICATION ====================
-
     async getCurrentUser() {
       if (!client) return null;
       try {
@@ -183,8 +172,6 @@ window.SupabaseService = (() => {
         callback(event, session);
       });
     },
-
-    // ==================== PRIVATE STORAGE & SIGNED URLS ====================
 
     async uploadPhoto(blob) {
       if (!client) throw new Error('Supabase 尚未初始化');
@@ -255,8 +242,6 @@ window.SupabaseService = (() => {
         console.warn('Failed to delete photo from storage:', e);
       }
     },
-
-    // ==================== DATABASE RECORDS ====================
 
     async getAllRecords(withPhotos = false) {
       if (!client) return [];
