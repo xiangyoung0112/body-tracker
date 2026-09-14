@@ -29,7 +29,11 @@ document.addEventListener('DOMContentLoaded', () => {
     activeCountdownInterval: null,
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth(),
-    selectedCalendarDate: null
+    selectedCalendarDate: null,
+    activeDayAlbumDate: null,
+    activeDayAlbumRecords: [],
+    activeDayAlbumPhotos: [],
+    activeDayAlbumIndex: 0
   };
 
   const elements = {
@@ -175,6 +179,19 @@ document.addEventListener('DOMContentLoaded', () => {
     btnModalSaveSupabase: document.getElementById('btnModalSaveSupabase'),
     btnCloseSupabaseModal: document.getElementById('btnCloseSupabaseModal'),
 
+    dayAlbumModal: document.getElementById('dayAlbumModal'),
+    btnCloseDayAlbumModal: document.getElementById('btnCloseDayAlbumModal'),
+    dayAlbumModalTitle: document.getElementById('dayAlbumModalTitle'),
+    dayAlbumModalSub: document.getElementById('dayAlbumModalSub'),
+    dayAlbumStatsRow: document.getElementById('dayAlbumStatsRow'),
+    dayAlbumNavTabs: document.getElementById('dayAlbumNavTabs'),
+    dayAlbumMainImg: document.getElementById('dayAlbumMainImg'),
+    dayAlbumMainBadge: document.getElementById('dayAlbumMainBadge'),
+    dayAlbumNotes: document.getElementById('dayAlbumNotes'),
+    dayAlbumTags: document.getElementById('dayAlbumTags'),
+    btnDayAlbumSetBefore: document.getElementById('btnDayAlbumSetBefore'),
+    btnDayAlbumSetAfter: document.getElementById('btnDayAlbumSetAfter'),
+    btnDayAlbumDeletePhoto: document.getElementById('btnDayAlbumDeletePhoto'),
     photoModal: document.getElementById('photoModal'),
     modalImg: document.getElementById('modalImg'),
     modalDetails: document.getElementById('modalDetails'),
@@ -1375,13 +1392,30 @@ document.addEventListener('DOMContentLoaded', () => {
     return null;
   }
 
+  function groupRecordsByDay(records) {
+    const map = new Map();
+    records.forEach(r => {
+      const dateKey = (r.record_date || '').substring(0, 10);
+      if (!dateKey) return;
+      if (!map.has(dateKey)) map.set(dateKey, []);
+      map.get(dateKey).push(r);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }
+
   function renderTimeline() {
     const onlyPhotos = elements.filterPhotosOnly.checked;
-    let list = onlyPhotos ? state.recordsWithPhotos : state.allRecords;
+    const dayGroups = groupRecordsByDay(state.allRecords);
 
-    elements.timelineCountText.textContent = `共 ${list.length} 筆記錄`;
+    const displayGroups = dayGroups.filter(([dateKey, dayRecords]) => {
+      const hasPhoto = dayRecords.some(r => r.photo_path || r.photo_url);
+      return onlyPhotos ? hasPhoto : true;
+    });
 
-    if (list.length === 0) {
+    const totalRecordsCount = state.allRecords.length;
+    elements.timelineCountText.textContent = `共 ${displayGroups.length} 個體態記錄日 (${totalRecordsCount} 筆資料)`;
+
+    if (displayGroups.length === 0) {
       elements.timelineContainer.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">🔒</div>
@@ -1393,81 +1427,236 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const angleMap = { front: '🧍 正面', side: '🚶 側面', back: '🚶‍♂️ 背面' };
+    const anglePriority = { front: 1, side: 2, back: 3 };
 
-    elements.timelineContainer.innerHTML = list.map((record) => {
-      const dateStr = record.record_date.replace('T', ' ');
-      const tagsHtml = record.tags
-        ? record.tags.split(',').filter(Boolean).map(t => `<span class="timeline-tag-badge">${escapeHtml(t)}</span>`).join('')
-        : '';
+    elements.timelineContainer.innerHTML = displayGroups.map(([dateKey, dayRecords]) => {
+      const dayPhotos = dayRecords.filter(r => r.photo_path || r.photo_url)
+        .sort((a, b) => (anglePriority[a.photo_angle] || 99) - (anglePriority[b.photo_angle] || 99));
 
-      const photoUrl = getRecordPhotoUrl(record);
-      const photoHtml = photoUrl
-        ? `<div class="timeline-photo-wrap" data-photo="${escapeHtml(photoUrl)}" data-info="${escapeHtml(dateStr)} • ${record.weight}kg">
-             <img src="${escapeHtml(photoUrl)}" alt="體態照" loading="lazy">
-             <span class="timeline-photo-angle">${angleMap[record.photo_angle] || '體態照'}</span>
-           </div>`
-        : '';
+      const dObj = new Date(dateKey + 'T00:00:00');
+      const weekDays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+      const weekStr = weekDays[dObj.getDay()] || '';
+      const formattedDate = `${dateKey} (${weekStr})`;
+
+      const latestRec = dayRecords[0];
+      const dayWeight = latestRec ? Number(latestRec.weight).toFixed(1) : '--';
+      const dayFat = dayRecords.find(r => r.body_fat !== null && r.body_fat !== undefined)?.body_fat;
+      const dayWaist = dayRecords.find(r => r.waist_cm)?.waist_cm;
+      const dayHip = dayRecords.find(r => r.hip_cm)?.hip_cm;
+      const dayChest = dayRecords.find(r => r.chest_cm)?.chest_cm;
+
+      const tagSet = new Set();
+      dayRecords.forEach(r => {
+        if (r.tags) r.tags.split(',').filter(Boolean).forEach(t => tagSet.add(t));
+      });
+      const tagsHtml = Array.from(tagSet).map(t => `<span class="timeline-tag-badge">${escapeHtml(t)}</span>`).join('');
+
+      const notes = dayRecords.map(r => r.note).filter(Boolean);
+      const noteText = notes.length > 0 ? notes[0] : '';
 
       const tapeBadges = [
-        record.waist_cm ? `<span class="timeline-tape-badge">腰 ${record.waist_cm}cm</span>` : '',
-        record.hip_cm ? `<span class="timeline-tape-badge">臀 ${record.hip_cm}cm</span>` : '',
-        record.chest_cm ? `<span class="timeline-tape-badge">胸 ${record.chest_cm}cm</span>` : ''
+        dayWaist ? `<span class="timeline-tape-badge">腰 ${dayWaist}cm</span>` : '',
+        dayHip ? `<span class="timeline-tape-badge">臀 ${dayHip}cm</span>` : '',
+        dayChest ? `<span class="timeline-tape-badge">胸 ${dayChest}cm</span>` : ''
       ].filter(Boolean).join('');
 
+      let gridHtml = '';
+      if (dayPhotos.length > 0) {
+        const gridClass = dayPhotos.length === 1 ? 'count-1' : dayPhotos.length === 2 ? 'count-2' : 'count-3';
+        const thumbs = dayPhotos.slice(0, 3).map((p, idx) => {
+          const pUrl = getRecordPhotoUrl(p);
+          const angleName = angleMap[p.photo_angle] || '體態照';
+          return `
+            <div class="timeline-album-thumb" data-photo-index="${idx}">
+              <img src="${escapeHtml(pUrl)}" alt="${angleName}" loading="lazy">
+              <span class="timeline-album-thumb-badge">${angleName}</span>
+            </div>
+          `;
+        }).join('');
+        gridHtml = `<div class="timeline-album-grid ${gridClass}">${thumbs}</div>`;
+      }
+
+      const photoChip = dayPhotos.length > 0
+        ? `<span class="timeline-album-count-chip">📸 ${dayPhotos.length} 張體態相簿</span>`
+        : '';
+
       return `
-        <div class="timeline-card" data-id="${record.id}">
-          <div class="timeline-card-header">
-            <span class="timeline-date">${dateStr}</span>
-            <span class="timeline-weight-wrap">${Number(record.weight).toFixed(1)} <small style="font-size:14px;color:#94a3b8">kg</small></span>
+        <div class="timeline-album-card" data-date="${dateKey}">
+          <div class="timeline-album-header">
+            <div class="timeline-album-title-wrap">
+              <span class="timeline-album-date">📅 ${formattedDate}</span>
+              ${photoChip}
+            </div>
+            <div class="timeline-album-weight-wrap">
+              <div class="timeline-album-weight">${dayWeight} <small style="font-size:13px;color:#94a3b8">kg</small></div>
+              ${dayFat ? `<div class="timeline-album-fat">體脂 ${dayFat}%</div>` : ''}
+            </div>
           </div>
 
-          ${photoHtml}
+          ${gridHtml}
 
-          <div class="timeline-card-body">
-            ${record.body_fat ? `<div style="font-size:12px;color:#06b6d4;margin-bottom:6px">體脂率: ${record.body_fat}%</div>` : ''}
-            ${tapeBadges ? `<div class="timeline-tape-badges">${tapeBadges}</div>` : ''}
+          <div class="timeline-card-body" style="padding: 10px 16px 8px;">
+            ${tapeBadges ? `<div class="timeline-tape-badges" style="margin-bottom:6px">${tapeBadges}</div>` : ''}
             ${tagsHtml ? `<div class="timeline-tags">${tagsHtml}</div>` : ''}
-            ${record.note ? `<p class="timeline-note">${escapeHtml(record.note)}</p>` : ''}
+            ${noteText ? `<p class="timeline-note" style="margin-top:4px">${escapeHtml(noteText)}</p>` : ''}
           </div>
 
-          <div class="timeline-card-footer">
-            <button type="button" class="btn-delete-record" data-id="${record.id}" data-path="${record.photo_path || ''}">刪除記錄</button>
+          <div class="timeline-album-footer-hint">
+            <span>${dayPhotos.length > 0 ? `點擊查看 ${dayPhotos.length} 張完整大圖與詳細紀錄` : '點擊查看當日詳細記錄'}</span>
+            <span class="timeline-album-btn-detail">查看相簿 ➔</span>
           </div>
         </div>
       `;
     }).join('');
 
-    elements.timelineContainer.querySelectorAll('.timeline-photo-wrap').forEach(wrap => {
-      wrap.addEventListener('click', () => {
-        const photoUrl = wrap.dataset.photo;
-        const info = wrap.dataset.info;
-        openPhotoModal(photoUrl, info);
-      });
-    });
-
-    elements.timelineContainer.querySelectorAll('.btn-delete-record').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.id;
-        const photoPath = btn.dataset.path;
-        if (!confirm('確定要從私人保險箱中刪除這筆紀錄與照片嗎？')) return;
-
-        try {
-          if (window.SupabaseService && window.SupabaseService.isConfigured()) {
-            await window.SupabaseService.deleteRecord(id, photoPath);
-          } else {
-            const res = await fetch(`/api/records/${id}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.error);
-          }
-          showToast('已刪除記錄');
-          await loadAllData();
-        } catch (err) {
-          console.error('Delete error:', err);
-          showToast('刪除失敗', true);
+    elements.timelineContainer.querySelectorAll('.timeline-album-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        const dateKey = card.dataset.date;
+        const targetThumb = e.target.closest('.timeline-album-thumb');
+        const initialIdx = targetThumb ? parseInt(targetThumb.dataset.photoIndex, 10) || 0 : 0;
+        const dayGroup = dayGroups.find(g => g[0] === dateKey);
+        if (dayGroup) {
+          openDayAlbumModal(dateKey, dayGroup[1], initialIdx);
         }
       });
     });
+  }
+
+  function openDayAlbumModal(dateKey, dayRecords, initialIdx = 0) {
+    state.activeDayAlbumDate = dateKey;
+    state.activeDayAlbumRecords = dayRecords;
+
+    const anglePriority = { front: 1, side: 2, back: 3 };
+    const angleMap = { front: '🧍 正面', side: '🚶 側面', back: '🚶‍♂️ 背面' };
+
+    const dayPhotos = dayRecords.filter(r => r.photo_path || r.photo_url)
+      .sort((a, b) => (anglePriority[a.photo_angle] || 99) - (anglePriority[b.photo_angle] || 99));
+
+    state.activeDayAlbumPhotos = dayPhotos;
+    state.activeDayAlbumIndex = Math.min(initialIdx, Math.max(0, dayPhotos.length - 1));
+
+    const dObj = new Date(dateKey + 'T00:00:00');
+    const weekDays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+    const weekStr = weekDays[dObj.getDay()] || '';
+    elements.dayAlbumModalTitle.textContent = `📅 ${dateKey} (${weekStr}) 體態相簿`;
+
+    const latestRec = dayRecords[0];
+    const dayWeight = latestRec ? Number(latestRec.weight).toFixed(1) : '--';
+    elements.dayAlbumModalSub.textContent = `共 ${dayPhotos.length} 張照片 • 最新體重 ${dayWeight} kg`;
+
+    const dayFat = dayRecords.find(r => r.body_fat !== null && r.body_fat !== undefined)?.body_fat;
+    const dayWaist = dayRecords.find(r => r.waist_cm)?.waist_cm;
+    const dayHip = dayRecords.find(r => r.hip_cm)?.hip_cm;
+    const dayChest = dayRecords.find(r => r.chest_cm)?.chest_cm;
+
+    elements.dayAlbumStatsRow.innerHTML = `
+      <div class="day-album-stat-box">
+        <div class="day-album-stat-label">體重</div>
+        <div class="day-album-stat-val">${dayWeight} kg</div>
+      </div>
+      ${dayFat ? `
+        <div class="day-album-stat-box">
+          <div class="day-album-stat-label">體脂率</div>
+          <div class="day-album-stat-val">${dayFat}%</div>
+        </div>
+      ` : ''}
+      ${dayWaist ? `
+        <div class="day-album-stat-box">
+          <div class="day-album-stat-label">腰圍</div>
+          <div class="day-album-stat-val">${dayWaist} cm</div>
+        </div>
+      ` : ''}
+      ${dayHip ? `
+        <div class="day-album-stat-box">
+          <div class="day-album-stat-label">臀圍</div>
+          <div class="day-album-stat-val">${dayHip} cm</div>
+        </div>
+      ` : ''}
+      ${dayChest ? `
+        <div class="day-album-stat-box">
+          <div class="day-album-stat-label">胸圍</div>
+          <div class="day-album-stat-val">${dayChest} cm</div>
+        </div>
+      ` : ''}
+    `;
+
+    if (dayPhotos.length > 0) {
+      elements.dayAlbumNavTabs.classList.remove('hidden');
+      elements.dayAlbumNavTabs.innerHTML = dayPhotos.map((p, idx) => {
+        const label = angleMap[p.photo_angle] || `照片 ${idx + 1}`;
+        return `
+          <button type="button" class="day-album-tab-btn ${idx === state.activeDayAlbumIndex ? 'active' : ''}" data-index="${idx}">
+            ${label}
+          </button>
+        `;
+      }).join('');
+
+      elements.dayAlbumNavTabs.querySelectorAll('.day-album-tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.index, 10);
+          state.activeDayAlbumIndex = idx;
+          elements.dayAlbumNavTabs.querySelectorAll('.day-album-tab-btn').forEach((b, i) => {
+            b.classList.toggle('active', i === idx);
+          });
+          updateDayAlbumActivePhoto();
+          playHaptic([15]);
+        });
+      });
+    } else {
+      elements.dayAlbumNavTabs.classList.add('hidden');
+    }
+
+    updateDayAlbumActivePhoto();
+
+    elements.dayAlbumModal.classList.remove('hidden');
+    playHaptic([20]);
+  }
+
+  function updateDayAlbumActivePhoto() {
+    const photos = state.activeDayAlbumPhotos || [];
+    const activePhoto = photos[state.activeDayAlbumIndex];
+    const angleMap = { front: '🧍 正面', side: '🚶 側面', back: '🚶‍♂️ 背面' };
+
+    if (activePhoto) {
+      const pUrl = getRecordPhotoUrl(activePhoto);
+      elements.dayAlbumMainImg.src = pUrl;
+      elements.dayAlbumMainBadge.textContent = angleMap[activePhoto.photo_angle] || '體態照';
+      elements.dayAlbumMainBadge.classList.remove('hidden');
+      elements.btnDayAlbumDeletePhoto.classList.remove('hidden');
+      elements.btnDayAlbumSetBefore.classList.remove('hidden');
+      elements.btnDayAlbumSetAfter.classList.remove('hidden');
+
+      if (activePhoto.note) {
+        elements.dayAlbumNotes.textContent = activePhoto.note;
+        elements.dayAlbumNotes.classList.remove('hidden');
+      } else {
+        elements.dayAlbumNotes.classList.add('hidden');
+      }
+
+      if (activePhoto.tags) {
+        elements.dayAlbumTags.innerHTML = activePhoto.tags.split(',').filter(Boolean)
+          .map(t => `<span class="timeline-tag-badge">${escapeHtml(t)}</span>`).join('');
+        elements.dayAlbumTags.classList.remove('hidden');
+      } else {
+        elements.dayAlbumTags.classList.add('hidden');
+      }
+    } else {
+      elements.dayAlbumMainImg.src = '';
+      elements.dayAlbumMainBadge.classList.add('hidden');
+      elements.btnDayAlbumDeletePhoto.classList.add('hidden');
+      elements.btnDayAlbumSetBefore.classList.add('hidden');
+      elements.btnDayAlbumSetAfter.classList.add('hidden');
+      elements.dayAlbumNotes.classList.add('hidden');
+      elements.dayAlbumTags.classList.add('hidden');
+    }
+  }
+
+  function closeDayAlbumModal() {
+    elements.dayAlbumModal.classList.add('hidden');
+    state.activeDayAlbumDate = null;
+    state.activeDayAlbumRecords = [];
+    state.activeDayAlbumPhotos = [];
   }
 
   function openPhotoModal(url, details) {
@@ -2234,7 +2423,63 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     elements.btnCloseModal.addEventListener('click', closePhotoModal);
-    elements.photoModal.addEventListener('click', (e) => {
+        if (elements.btnCloseDayAlbumModal) {
+      elements.btnCloseDayAlbumModal.addEventListener('click', closeDayAlbumModal);
+    }
+
+    if (elements.dayAlbumModal) {
+      elements.dayAlbumModal.addEventListener('click', (e) => {
+        if (e.target === elements.dayAlbumModal) closeDayAlbumModal();
+      });
+    }
+
+    if (elements.btnDayAlbumSetBefore) {
+      elements.btnDayAlbumSetBefore.addEventListener('click', () => {
+        const activePhoto = (state.activeDayAlbumPhotos || [])[state.activeDayAlbumIndex];
+        if (activePhoto && elements.compareBeforeSelect) {
+          elements.compareBeforeSelect.value = String(activePhoto.id);
+          elements.compareBeforeSelect.dispatchEvent(new Event('change'));
+          showToast('已設為 Before 對比目標 🎯');
+        }
+      });
+    }
+
+    if (elements.btnDayAlbumSetAfter) {
+      elements.btnDayAlbumSetAfter.addEventListener('click', () => {
+        const activePhoto = (state.activeDayAlbumPhotos || [])[state.activeDayAlbumIndex];
+        if (activePhoto && elements.compareAfterSelect) {
+          elements.compareAfterSelect.value = String(activePhoto.id);
+          elements.compareAfterSelect.dispatchEvent(new Event('change'));
+          showToast('已設為 After 對比目標 🎯');
+        }
+      });
+    }
+
+    if (elements.btnDayAlbumDeletePhoto) {
+      elements.btnDayAlbumDeletePhoto.addEventListener('click', async () => {
+        const activePhoto = (state.activeDayAlbumPhotos || [])[state.activeDayAlbumIndex];
+        if (!activePhoto) return;
+        if (!confirm(`確定要從私人保險箱中刪除這張${photoAngleLabels[activePhoto.photo_angle] || ''}照片嗎？`)) return;
+
+        try {
+          if (window.SupabaseService && window.SupabaseService.isConfigured()) {
+            await window.SupabaseService.deleteRecord(activePhoto.id, activePhoto.photo_path);
+          } else {
+            const res = await fetch(`/api/records/${activePhoto.id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
+          }
+          showToast('已刪除照片');
+          closeDayAlbumModal();
+          await loadAllData();
+        } catch (err) {
+          console.error('Delete photo error:', err);
+          showToast('刪除失敗', true);
+        }
+      });
+    }
+
+elements.photoModal.addEventListener('click', (e) => {
       if (e.target === elements.photoModal) closePhotoModal();
     });
     elements.qrModal.addEventListener('click', (e) => {

@@ -538,6 +538,39 @@
       </div>
     </div>
 
+    <!-- 每日體態相簿詳情彈窗 -->
+    <div id="dayAlbumModal" class="modal-backdrop hidden">
+      <div class="modal-dialog day-album-dialog">
+        <button type="button" id="btnCloseDayAlbumModal" class="btn-close-modal">✕</button>
+        <div class="day-album-modal-header">
+          <h3 id="dayAlbumModalTitle" class="day-album-modal-title">📅 體態相簿</h3>
+          <div id="dayAlbumModalSub" class="day-album-modal-sub">載入中...</div>
+        </div>
+
+        <div id="dayAlbumStatsRow" class="day-album-stats-row"></div>
+
+        <div id="dayAlbumNavTabs" class="day-album-nav-tabs"></div>
+
+        <div class="day-album-photo-view">
+          <img id="dayAlbumMainImg" src="" alt="體態照片">
+          <span id="dayAlbumMainBadge" class="day-album-photo-badge">正面</span>
+        </div>
+
+        <div class="day-album-details-pane">
+          <div id="dayAlbumNotes" class="day-album-notes hidden"></div>
+          <div id="dayAlbumTags" class="timeline-tags hidden"></div>
+        </div>
+
+        <div class="day-album-modal-actions">
+          <div style="display: flex; gap: 8px;">
+            <button type="button" id="btnDayAlbumSetBefore" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">設為 Before</button>
+            <button type="button" id="btnDayAlbumSetAfter" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">設為 After</button>
+          </div>
+          <button type="button" id="btnDayAlbumDeletePhoto" class="btn-danger" style="font-size: 12px; padding: 6px 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 8px; cursor: pointer;">刪除當前照片</button>
+        </div>
+      </div>
+    </div>
+
     <div id="qrModal" class="modal-backdrop hidden">
       <div class="modal-dialog qr-dialog">
         <button type="button" id="btnCloseQrModal" class="btn-close-modal">✕</button>
