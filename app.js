@@ -228,36 +228,47 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.authErrorMsg.classList.add('hidden');
 
       try {
+        let authResult = null;
         if (mode === 'register') {
           showToast('正在建立您的專屬私人保險箱...');
-          await window.SupabaseService.signUp(email, password);
+          authResult = await window.SupabaseService.signUp(email, password);
           try {
             await window.SupabaseService.signIn(email, password);
           } catch (e) {}
-          showToast('🎉 保險箱帳號已建立並安全解鎖！');
         } else if (mode === 'login') {
           showToast('正在驗證密碼...');
-          await window.SupabaseService.signIn(email, password);
-          showToast('🔓 保險箱已解鎖！');
+          authResult = await window.SupabaseService.signIn(email, password);
         } else {
           // AUTO mode: Try sign in first. If user doesn't exist, automatically sign up!
-          showToast('正在解鎖私人保險箱...');
+          showToast('正在驗證並解鎖私人保險箱...');
           try {
-            await window.SupabaseService.signIn(email, password);
-            showToast('🔓 保險箱已解鎖！');
+            authResult = await window.SupabaseService.signIn(email, password);
           } catch (loginErr) {
             const msg = (loginErr.message || '').toLowerCase();
             if (msg.includes('invalid login credentials') || msg.includes('user not found') || msg.includes('invalid_grant')) {
               showToast('初次使用，正在為您建立專屬保險箱...');
-              await window.SupabaseService.signUp(email, password);
+              authResult = await window.SupabaseService.signUp(email, password);
               try {
                 await window.SupabaseService.signIn(email, password);
               } catch (e) {}
-              showToast('🎉 專屬保險箱建立成功，已解鎖！');
             } else {
               throw loginErr;
             }
           }
+        }
+
+        // Verify session and unlock UI immediately
+        const session = await window.SupabaseService.getSession();
+        if (session && session.user) {
+          elements.authScreen.classList.add('hidden');
+          elements.appContainer.classList.remove('hidden');
+          if (elements.currentUserEmail) {
+            elements.currentUserEmail.textContent = session.user.email;
+          }
+          showToast('🎉 私人保險箱已成功解鎖！');
+          loadAllData().catch(console.error);
+        } else {
+          showToast('🎉 保險箱已建立，請點擊登入解鎖！');
         }
       } catch (err) {
         console.error('Auth error:', err);

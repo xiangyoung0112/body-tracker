@@ -4,13 +4,12 @@
  * Supports One-Time URL Activation (#vault=URL&k=KEY).
  */
 
-const SupabaseService = (() => {
+window.SupabaseService = (() => {
   const STORAGE_KEY_URL = 'fittrack_supabase_url';
   const STORAGE_KEY_KEY = 'fittrack_supabase_key';
 
-  // GitHub Clean Mode: Empty by default so public repository contains NO keys!
-  const DEFAULT_URL = '';
-  const DEFAULT_KEY = '';
+  const DEFAULT_URL = 'https://skwbxthrdkcdrqvzoaxy.supabase.co';
+  const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrd2J4dGhyZGtjZHJxdnpvYXh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMDg3NTksImV4cCI6MjA5ODU4NDc1OX0.7I44Rw_MsUh-pPm0LE0NPymQy01GvxnMRjder7l7kfQ';
 
   function parseActivationString(str) {
     if (!str) return null;
