@@ -108,6 +108,22 @@ app.post('/api/records', upload.single('photo'), (req, res) => {
 
     const photoPath = req.file ? req.file.filename : null;
 
+    if (photoPath) {
+      const dayPhotos = recordDao.getPhotosByDay(record_date || new Date().toISOString());
+      const angle = photo_angle || 'front';
+      const limitReached = dayPhotos.length >= 3;
+      const angleExists = dayPhotos.some(record => (record.photo_angle || 'front') === angle);
+      if (limitReached || angleExists) {
+        try { fs.unlinkSync(path.join(uploadsDir, photoPath)); } catch (cleanupError) { console.warn('Failed to clean rejected upload:', cleanupError); }
+        return res.status(409).json({
+          success: false,
+          error: limitReached
+            ? '每天的體態相簿最多 3 張，請先刪除舊照片再替換'
+            : `當天已有${angle === 'front' ? '正面' : angle === 'side' ? '側面' : '背面'}照片，請先刪除舊照片再替換`
+        });
+      }
+    }
+
     const newRecord = recordDao.create({
       weight: parseFloat(weight),
       body_fat: body_fat ? parseFloat(body_fat) : null,

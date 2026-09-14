@@ -82,6 +82,16 @@ const recordDao = {
     return stmt.all();
   },
 
+  getPhotosByDay(recordDate) {
+    const dayKey = String(recordDate || '').substring(0, 10);
+    return db.prepare(`
+      SELECT * FROM records
+      WHERE photo_path IS NOT NULL AND photo_path != ''
+        AND substr(record_date, 1, 10) = ?
+      ORDER BY id DESC
+    `).all(dayKey);
+  },
+
   // Get a single record by ID
   getById(id) {
     const stmt = db.prepare(`SELECT * FROM records WHERE id = ?`);

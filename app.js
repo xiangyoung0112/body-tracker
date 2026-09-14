@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
       user_name: '體態記錄'
     },
     networkInfo: null,
+    selectedPhotos: { front: null, side: null, back: null },
     selectedPhotoBlob: null,
     selectedPhotoAngle: 'front',
     selectedTags: new Set(),
@@ -21,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraStream: null,
     cameraFacing: 'environment',
     cameraDelay: 3,
+    cameraFitMode: 'contain',
+    previewFitMode: 'contain',
     ghostEnabled: true,
     ghostOpacity: 0.35,
     activeCountdownInterval: null,
@@ -495,6 +498,52 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const photoAngleOrder = ['front', 'side', 'back'];
+  const photoAngleLabels = { front: '正面', side: '側面', back: '背面' };
+
+  function selectPhotoAngle(angle) {
+    state.selectedPhotoAngle = angle;
+    const radio = Array.from(elements.angleRadios).find(item => item.value === angle);
+    if (radio) radio.checked = true;
+    renderPhotoAlbum();
+  }
+
+  function setPhotoForAngle(angle, blob) {
+    state.selectedPhotos[angle] = blob;
+    state.selectedPhotoBlob = blob;
+    renderPhotoAlbum();
+  }
+
+  function renderPhotoAlbum() {
+    const activeBlob = state.selectedPhotos[state.selectedPhotoAngle];
+    state.selectedPhotoBlob = activeBlob || null;
+    if (elements.previewAngleBadge) elements.previewAngleBadge.textContent = photoAngleLabels[state.selectedPhotoAngle];
+
+    const count = photoAngleOrder.filter(angle => state.selectedPhotos[angle]).length;
+    if (elements.albumPhotoCount) elements.albumPhotoCount.textContent = `${count} / 3`;
+    if (elements.albumPhotoSlots) {
+      elements.albumPhotoSlots.innerHTML = photoAngleOrder.map(angle => {
+        const blob = state.selectedPhotos[angle];
+        const preview = blob ? URL.createObjectURL(blob) : '';
+        return `<div role="button" tabindex="0" class="album-photo-slot ${angle === state.selectedPhotoAngle ? 'active' : ''} ${blob ? 'has-photo' : ''}" data-angle="${angle}">
+          ${blob ? `<img src="${preview}" alt="${photoAngleLabels[angle]}"><button type="button" class="slot-remove" data-remove-angle="${angle}" aria-label="移除${photoAngleLabels[angle]}">×</button>` : '<span style="display:block;font-size:24px;margin:8px 0 5px">＋</span>'}
+          <span>${photoAngleLabels[angle]}${blob ? ' ✓' : ''}</span>
+        </div>`;
+      }).join('');
+    }
+
+    if (activeBlob) {
+      elements.photoPreviewImg.src = URL.createObjectURL(activeBlob);
+      elements.photoPreviewImg.style.objectFit = state.previewFitMode;
+      elements.photoPlaceholder.classList.add('hidden');
+      elements.photoPreviewWrapper.classList.remove('hidden');
+    } else {
+      elements.photoPreviewImg.src = '';
+      elements.photoPreviewWrapper.classList.add('hidden');
+      elements.photoPlaceholder.classList.remove('hidden');
+    }
+  }
+
   function initTapeModule() {
     if (elements.toggleTapeCard && elements.tapeInputsWrap) {
       elements.toggleTapeCard.addEventListener('click', () => {
@@ -511,8 +560,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function initCameraCapture() {
+    if (elements.albumPhotoSlots) {
+      elements.albumPhotoSlots.addEventListener('click', (e) => {
+        const remove = e.target.closest('[data-remove-angle]');
+        if (remove) {
+          e.stopPropagation();
+          const angle = remove.dataset.removeAngle;
+          state.selectedPhotos[angle] = null;
+          selectPhotoAngle(angle);
+          return;
+        }
+        const slot = e.target.closest('[data-angle]');
+        if (slot) selectPhotoAngle(slot.dataset.angle);
+      });
+    }
+
     elements.photoPreviewContainer.addEventListener('click', (e) => {
-      if (e.target.closest('#btnRetakePhoto') || e.target.closest('#btnRemovePhoto') || e.target.closest('#btnLaunchNativeFile') || e.target.closest('#btnLaunchCountdownCamera')) return;
+      if (e.target.closest('#btnRetakePhoto') || e.target.closest('#btnRemovePhoto') || e.target.closest('#btnTogglePreviewFit') || e.target.closest('#btnLaunchNativeFile') || e.target.closest('#btnLaunchCountdownCamera')) return;
       if (!state.selectedPhotoBlob) {
         openCountdownCamera();
       }
@@ -532,6 +596,16 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    if (elements.btnTogglePreviewFit) {
+      elements.btnTogglePreviewFit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.previewFitMode = state.previewFitMode === 'contain' ? 'cover' : 'contain';
+        elements.photoPreviewImg.style.objectFit = state.previewFitMode;
+        elements.btnTogglePreviewFit.textContent = state.previewFitMode === 'contain' ? '📐 完整不裁切' : '🔲 滿版填滿';
+        playHaptic([15]);
+      });
+    }
+
     elements.btnRetakePhoto.addEventListener('click', (e) => {
       e.stopPropagation();
       openCountdownCamera();
@@ -543,20 +617,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     elements.cameraInput.addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
 
       try {
-        showToast('正在優化照片尺寸...');
-        const compressedBlob = await compressImage(file, 1600, 0.85);
-        state.selectedPhotoBlob = compressedBlob;
-
-        const previewUrl = URL.createObjectURL(compressedBlob);
-        elements.photoPreviewImg.src = previewUrl;
-        elements.photoPlaceholder.classList.add('hidden');
-        elements.photoPreviewWrapper.classList.remove('hidden');
-
-        showToast('📸 照片已就緒（不進手機相簿）');
+        const emptyAngles = photoAngleOrder.filter(angle => !state.selectedPhotos[angle]);
+        if (files.length > emptyAngles.length) {
+          showToast('每日相簿最多 3 張；要替換請先移除舊照片', true);
+          return;
+        }
+        showToast(`正在優化 ${files.length} 張照片...`);
+        const blobs = await Promise.all(files.map(file => compressImage(file, 1600, 0.85)));
+        blobs.forEach((blob, index) => { state.selectedPhotos[emptyAngles[index]] = blob; });
+        selectPhotoAngle(emptyAngles[Math.max(0, blobs.length - 1)]);
+        showToast(`📸 已加入 ${blobs.length} 張，相簿現有 ${photoAngleOrder.filter(a => state.selectedPhotos[a]).length} / 3 張`);
       } catch (err) {
         console.error('Image compression failed:', err);
         showToast('照片處理失敗，請重試', true);
@@ -652,6 +726,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       updateGhostOverlay();
+      elements.cameraLiveVideo.style.objectFit = state.cameraFitMode;
+      if (elements.ghostOverlayImg) elements.ghostOverlayImg.style.objectFit = state.cameraFitMode;
       elements.countdownCameraModal.classList.remove('hidden');
       playHaptic([25]);
 
@@ -854,6 +930,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const recordDate = elements.recordDateInput.value || new Date().toISOString();
       const note = elements.noteInput.value.trim();
       const tags = Array.from(state.selectedTags).join(',');
+      const pendingPhotos = photoAngleOrder.filter(angle => state.selectedPhotos[angle]).map(angle => ({ angle, blob: state.selectedPhotos[angle] }));
+      const dayKey = recordDate.substring(0, 10);
+      const existingDayPhotos = state.allRecords.filter(r => (r.photo_path || r.photo_url) && String(r.record_date || '').substring(0, 10) === dayKey);
+      if (existingDayPhotos.length + pendingPhotos.length > 3) {
+        showToast(`${dayKey} 每日最多 3 張；請先刪除舊照片再替換`, true);
+        return;
+      }
+      const duplicateAngle = pendingPhotos.find(photo => existingDayPhotos.some(r => (r.photo_angle || 'front') === photo.angle));
+      if (duplicateAngle) {
+        showToast(`${dayKey} 已有${photoAngleLabels[duplicateAngle.angle]}；請先刪除舊照片再替換`, true);
+        return;
+      }
 
       const btnText = elements.btnSubmitRecord.querySelector('.btn-text');
       const btnSpinner = elements.btnSubmitRecord.querySelector('.btn-spinner');

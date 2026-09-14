@@ -185,6 +185,11 @@
               <span>防護機制生效中：照片拍完直達後端電腦，手機相簿無殘留。</span>
             </div>
 
+            <div class="album-heading">
+              <div><strong>每日體態相簿</strong><small>一次準備正面、側面、背面，統一儲存</small></div>
+              <span id="albumPhotoCount" class="album-count">0 / 3</span>
+            </div>
+
             <div class="angle-selector">
               <label class="angle-radio">
                 <input type="radio" name="photoAngle" value="front" checked>
@@ -200,7 +205,9 @@
               </label>
             </div>
 
-            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden-file-input">
+            <input type="file" id="cameraInput" accept="image/*" multiple class="hidden-file-input">
+
+            <div id="albumPhotoSlots" class="album-photo-slots" aria-label="三角度照片狀態"></div>
 
             <div id="photoPreviewContainer" class="photo-preview-box">
               <div id="photoPlaceholder" class="photo-placeholder">
@@ -215,7 +222,7 @@
                 </button>
                 <div style="margin-top: 8px;">
                   <button type="button" id="btnLaunchNativeFile" class="btn-text-link" style="font-size: 12px; color: var(--text-secondary); text-decoration: underline;">
-                    或使用傳統拍照 / 檔案上傳
+                    或從相簿一次選擇 1–3 張
                   </button>
                 </div>
               </div>
@@ -224,14 +231,17 @@
                 <img id="photoPreviewImg" src="" alt="體態預覽">
                 <div class="preview-overlay">
                   <span id="previewAngleBadge" class="preview-badge">正面</span>
-                  <button type="button" id="btnRetakePhoto" class="btn-retake">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M23 4v6h-6"></path>
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                    </svg>
-                    重拍
-                  </button>
-                  <button type="button" id="btnRemovePhoto" class="btn-remove">✕</button>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <button type="button" id="btnTogglePreviewFit" class="btn-fit-toggle" title="切換完整/填滿">📐 完整不裁切</button>
+                    <button type="button" id="btnRetakePhoto" class="btn-retake">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                      </svg>
+                      重拍
+                    </button>
+                    <button type="button" id="btnRemovePhoto" class="btn-remove">✕</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -580,6 +590,10 @@
           <button type="button" id="btnCloseCountdownCamera" class="camera-circle-btn">✕</button>
           
           <div class="camera-top-actions">
+            <button type="button" id="btnCameraFitToggle" class="camera-pill-btn active" title="切換鏡頭裁切/完整視野">
+              📐 完整視野
+            </button>
+
             <button type="button" id="btnCameraTimerToggle" class="camera-pill-btn">
               ⏱️ <span id="cameraTimerLabel">3s</span>
             </button>
@@ -600,7 +614,7 @@
         </div>
 
         <div class="camera-bottom-bar">
-          <div class="shutter-helper-tip">提示：架好手機後按快門，讀秒完成自動拍攝</div>
+          <div class="shutter-helper-tip">提示：已開啟全景無裁切拍攝 • 架好手機自動倒數</div>
           <div class="camera-shutter-wrap">
             <button type="button" id="btnCameraShutter" class="camera-shutter-btn">
               <div class="shutter-inner">
