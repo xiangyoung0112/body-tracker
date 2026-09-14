@@ -15,8 +15,18 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedTags: new Set(),
     chartInstance: null,
     chartRange: '7',
-    compareMode: 'slider', // 'slider' or 'side'
-    sliderPos: 50 // percentage
+    chartShowMA7: true,
+    compareMode: 'slider',
+    sliderPos: 50,
+    cameraStream: null,
+    cameraFacing: 'environment',
+    cameraDelay: 3,
+    ghostEnabled: true,
+    ghostOpacity: 0.35,
+    activeCountdownInterval: null,
+    calendarYear: new Date().getFullYear(),
+    calendarMonth: new Date().getMonth(),
+    selectedCalendarDate: null
   };
 
   const elements = {
@@ -39,6 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tabPanes: document.querySelectorAll('.tab-pane'),
     headerTitle: document.getElementById('headerTitle'),
     btnQuickScan: document.getElementById('btnQuickScan'),
+    btnOpenCalendar: document.getElementById('btnOpenCalendar'),
+    streakCount: document.getElementById('streakCount'),
     
     recordForm: document.getElementById('recordForm'),
     weightInput: document.getElementById('weightInput'),
@@ -49,8 +61,17 @@ document.addEventListener('DOMContentLoaded', () => {
     tagChips: document.querySelectorAll('.tag-chip'),
     angleRadios: document.querySelectorAll('input[name="photoAngle"]'),
     btnSubmitRecord: document.getElementById('btnSubmitRecord'),
+
+    toggleTapeCard: document.getElementById('toggleTapeCard'),
+    tapeToggleText: document.getElementById('tapeToggleText'),
+    tapeInputsWrap: document.getElementById('tapeInputsWrap'),
+    waistInput: document.getElementById('waistInput'),
+    hipInput: document.getElementById('hipInput'),
+    chestInput: document.getElementById('chestInput'),
     
     cameraInput: document.getElementById('cameraInput'),
+    btnLaunchCountdownCamera: document.getElementById('btnLaunchCountdownCamera'),
+    btnLaunchNativeFile: document.getElementById('btnLaunchNativeFile'),
     photoPreviewContainer: document.getElementById('photoPreviewContainer'),
     photoPlaceholder: document.getElementById('photoPlaceholder'),
     photoPreviewWrapper: document.getElementById('photoPreviewWrapper'),
@@ -59,15 +80,36 @@ document.addEventListener('DOMContentLoaded', () => {
     btnRetakePhoto: document.getElementById('btnRetakePhoto'),
     btnRemovePhoto: document.getElementById('btnRemovePhoto'),
 
+    countdownCameraModal: document.getElementById('countdownCameraModal'),
+    cameraLiveVideo: document.getElementById('cameraLiveVideo'),
+    ghostOverlayImg: document.getElementById('ghostOverlayImg'),
+    cameraCountdownDisplay: document.getElementById('cameraCountdownDisplay'),
+    cameraFlashOverlay: document.getElementById('cameraFlashOverlay'),
+    btnCloseCountdownCamera: document.getElementById('btnCloseCountdownCamera'),
+    btnCameraTimerToggle: document.getElementById('btnCameraTimerToggle'),
+    cameraTimerLabel: document.getElementById('cameraTimerLabel'),
+    btnCameraGhostToggle: document.getElementById('btnCameraGhostToggle'),
+    btnCameraFlip: document.getElementById('btnCameraFlip'),
+    ghostSliderWrap: document.getElementById('ghostSliderWrap'),
+    ghostOpacityVal: document.getElementById('ghostOpacityVal'),
+    ghostOpacityRange: document.getElementById('ghostOpacityRange'),
+    btnCameraShutter: document.getElementById('btnCameraShutter'),
+    shutterInnerDelay: document.getElementById('shutterInnerDelay'),
+
     statLatestWeight: document.getElementById('statLatestWeight'),
+    statMovingAvg: document.getElementById('statMovingAvg'),
+    statWeeklyRate: document.getElementById('statWeeklyRate'),
     statDate: document.getElementById('statDate'),
     statChange: document.getElementById('statChange'),
     statChangeWrap: document.getElementById('statChangeWrap'),
     statFromStart: document.getElementById('statFromStart'),
     statToTarget: document.getElementById('statToTarget'),
     statTargetVal: document.getElementById('statTargetVal'),
+    statEtaValue: document.getElementById('statEtaValue'),
+    statEtaSub: document.getElementById('statEtaSub'),
     statBmi: document.getElementById('statBmi'),
     statBmiCategory: document.getElementById('statBmiCategory'),
+    btnToggleMA7: document.getElementById('btnToggleMA7'),
     rangeBtns: document.querySelectorAll('.range-btn'),
     weightChartCanvas: document.getElementById('weightChart'),
 
@@ -80,6 +122,9 @@ document.addEventListener('DOMContentLoaded', () => {
     compareSummaryBadge: document.getElementById('compareSummaryBadge'),
     compareWeightDiff: document.getElementById('compareWeightDiff'),
     compareDaysDiff: document.getElementById('compareDaysDiff'),
+    compareWaistDiffWrap: document.getElementById('compareWaistDiffWrap'),
+    compareWaistDiff: document.getElementById('compareWaistDiff'),
+    btnGenerateCollage: document.getElementById('btnGenerateCollage'),
     btnModeSlider: document.getElementById('btnModeSlider'),
     btnModeSide: document.getElementById('btnModeSide'),
     sliderCompareView: document.getElementById('sliderCompareView'),
@@ -94,6 +139,21 @@ document.addEventListener('DOMContentLoaded', () => {
     imgSideAfter: document.getElementById('imgSideAfter'),
     sideBeforeInfo: document.getElementById('sideBeforeInfo'),
     sideAfterInfo: document.getElementById('sideAfterInfo'),
+
+    collageModal: document.getElementById('collageModal'),
+    btnCloseCollageModal: document.getElementById('btnCloseCollageModal'),
+    collageCanvas: document.getElementById('collageCanvas'),
+    collageOutputImg: document.getElementById('collageOutputImg'),
+    btnDownloadCollage: document.getElementById('btnDownloadCollage'),
+
+    calendarModal: document.getElementById('calendarModal'),
+    btnCloseCalendarModal: document.getElementById('btnCloseCalendarModal'),
+    calendarStreakBadge: document.getElementById('calendarStreakBadge'),
+    btnPrevMonth: document.getElementById('btnPrevMonth'),
+    btnNextMonth: document.getElementById('btnNextMonth'),
+    calendarMonthTitle: document.getElementById('calendarMonthTitle'),
+    calendarDaysGrid: document.getElementById('calendarDaysGrid'),
+    calendarSelectedDayInfo: document.getElementById('calendarSelectedDayInfo'),
 
     settingHeight: document.getElementById('settingHeight'),
     settingTargetWeight: document.getElementById('settingTargetWeight'),
@@ -139,6 +199,32 @@ document.addEventListener('DOMContentLoaded', () => {
     toastTimer = setTimeout(() => {
       elements.toast.classList.add('hidden');
     }, 2800);
+  }
+
+  let audioCtx = null;
+  function playTone(freq = 880, duration = 0.08, type = 'sine') {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    } catch (e) {}
+  }
+
+  function playHaptic(pattern = [30]) {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(pattern); } catch (e) {}
+    }
   }
 
   function initAuthFlow() {
@@ -409,17 +495,46 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function initTapeModule() {
+    if (elements.toggleTapeCard && elements.tapeInputsWrap) {
+      elements.toggleTapeCard.addEventListener('click', () => {
+        const isHidden = elements.tapeInputsWrap.classList.contains('hidden');
+        if (isHidden) {
+          elements.tapeInputsWrap.classList.remove('hidden');
+          if (elements.tapeToggleText) elements.tapeToggleText.textContent = '收合 ▴';
+        } else {
+          elements.tapeInputsWrap.classList.add('hidden');
+          if (elements.tapeToggleText) elements.tapeToggleText.textContent = '展開 ▾';
+        }
+      });
+    }
+  }
+
   function initCameraCapture() {
     elements.photoPreviewContainer.addEventListener('click', (e) => {
-      if (e.target.closest('#btnRetakePhoto') || e.target.closest('#btnRemovePhoto')) return;
+      if (e.target.closest('#btnRetakePhoto') || e.target.closest('#btnRemovePhoto') || e.target.closest('#btnLaunchNativeFile') || e.target.closest('#btnLaunchCountdownCamera')) return;
       if (!state.selectedPhotoBlob) {
-        elements.cameraInput.click();
+        openCountdownCamera();
       }
     });
 
+    if (elements.btnLaunchCountdownCamera) {
+      elements.btnLaunchCountdownCamera.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openCountdownCamera();
+      });
+    }
+
+    if (elements.btnLaunchNativeFile) {
+      elements.btnLaunchNativeFile.addEventListener('click', (e) => {
+        e.stopPropagation();
+        elements.cameraInput.click();
+      });
+    }
+
     elements.btnRetakePhoto.addEventListener('click', (e) => {
       e.stopPropagation();
-      elements.cameraInput.click();
+      openCountdownCamera();
     });
 
     elements.btnRemovePhoto.addEventListener('click', (e) => {
@@ -449,6 +564,225 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.cameraInput.value = '';
       }
     });
+  }
+
+  function initCountdownCamera() {
+    if (elements.btnCloseCountdownCamera) {
+      elements.btnCloseCountdownCamera.addEventListener('click', closeCountdownCamera);
+    }
+
+    if (elements.btnCameraFlip) {
+      elements.btnCameraFlip.addEventListener('click', () => {
+        state.cameraFacing = state.cameraFacing === 'environment' ? 'user' : 'environment';
+        playTone(660, 0.06);
+        playHaptic([20]);
+        openCountdownCamera();
+      });
+    }
+
+    if (elements.btnCameraTimerToggle) {
+      elements.btnCameraTimerToggle.addEventListener('click', () => {
+        const delays = [3, 5, 10, 0];
+        const nextIdx = (delays.indexOf(state.cameraDelay) + 1) % delays.length;
+        state.cameraDelay = delays[nextIdx];
+        if (elements.cameraTimerLabel) {
+          elements.cameraTimerLabel.textContent = state.cameraDelay > 0 ? `${state.cameraDelay}s` : '關閉';
+        }
+        if (elements.shutterInnerDelay) {
+          elements.shutterInnerDelay.textContent = state.cameraDelay > 0 ? `${state.cameraDelay}s` : '即時';
+        }
+        playTone(720, 0.05);
+        playHaptic([15]);
+      });
+    }
+
+    if (elements.btnCameraGhostToggle) {
+      elements.btnCameraGhostToggle.addEventListener('click', () => {
+        state.ghostEnabled = !state.ghostEnabled;
+        elements.btnCameraGhostToggle.classList.toggle('active', state.ghostEnabled);
+        elements.btnCameraGhostToggle.innerHTML = state.ghostEnabled ? '👻 疊影: 開' : '👻 疊影: 關';
+        updateGhostOverlay();
+        playTone(600, 0.05);
+      });
+    }
+
+    if (elements.ghostOpacityRange) {
+      elements.ghostOpacityRange.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        state.ghostOpacity = val / 100;
+        if (elements.ghostOverlayImg) elements.ghostOverlayImg.style.opacity = state.ghostOpacity;
+        if (elements.ghostOpacityVal) elements.ghostOpacityVal.textContent = `${val}%`;
+      });
+    }
+
+    if (elements.btnCameraShutter) {
+      elements.btnCameraShutter.addEventListener('click', triggerCameraShutter);
+    }
+  }
+
+  async function openCountdownCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast('當前環境不支援即時串流相機，為您開啟相簿選擇', true);
+      elements.cameraInput.click();
+      return;
+    }
+
+    try {
+      if (state.cameraStream) {
+        state.cameraStream.getTracks().forEach(t => t.stop());
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: state.cameraFacing,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      });
+
+      state.cameraStream = stream;
+      elements.cameraLiveVideo.srcObject = stream;
+      await elements.cameraLiveVideo.play();
+
+      if (state.cameraFacing === 'user') {
+        elements.cameraLiveVideo.style.transform = 'scaleX(-1)';
+      } else {
+        elements.cameraLiveVideo.style.transform = 'none';
+      }
+
+      updateGhostOverlay();
+      elements.countdownCameraModal.classList.remove('hidden');
+      playHaptic([25]);
+
+    } catch (err) {
+      console.warn('getUserMedia error:', err);
+      showToast('無法調用鏡頭（可能未授予相機權限），已為您切換至檔案選擇', true);
+      elements.cameraInput.click();
+    }
+  }
+
+  function updateGhostOverlay() {
+    if (!state.ghostEnabled) {
+      if (elements.ghostOverlayImg) elements.ghostOverlayImg.classList.add('hidden');
+      if (elements.ghostSliderWrap) elements.ghostSliderWrap.classList.add('hidden');
+      return;
+    }
+
+    const photoRecords = state.allRecords.filter(r => (r.photo_path || r.photo_url) && (r.photo_angle === state.selectedPhotoAngle || !r.photo_angle));
+    photoRecords.sort((a, b) => new Date(b.record_date) - new Date(a.record_date));
+    const prevRecord = photoRecords[0];
+
+    if (prevRecord) {
+      const url = getRecordPhotoUrl(prevRecord);
+      if (url && elements.ghostOverlayImg) {
+        elements.ghostOverlayImg.src = url;
+        elements.ghostOverlayImg.style.opacity = state.ghostOpacity;
+        elements.ghostOverlayImg.classList.remove('hidden');
+        if (elements.ghostSliderWrap) elements.ghostSliderWrap.classList.remove('hidden');
+        return;
+      }
+    }
+
+    if (elements.ghostOverlayImg) elements.ghostOverlayImg.classList.add('hidden');
+    if (elements.ghostSliderWrap) elements.ghostSliderWrap.classList.add('hidden');
+  }
+
+  function closeCountdownCamera() {
+    if (state.activeCountdownInterval) {
+      clearInterval(state.activeCountdownInterval);
+      state.activeCountdownInterval = null;
+    }
+    if (elements.cameraCountdownDisplay) elements.cameraCountdownDisplay.classList.add('hidden');
+    if (elements.btnCameraShutter) elements.btnCameraShutter.disabled = false;
+
+    if (state.cameraStream) {
+      state.cameraStream.getTracks().forEach(t => t.stop());
+      state.cameraStream = null;
+    }
+    if (elements.cameraLiveVideo) elements.cameraLiveVideo.srcObject = null;
+    if (elements.countdownCameraModal) elements.countdownCameraModal.classList.add('hidden');
+  }
+
+  function triggerCameraShutter() {
+    if (state.activeCountdownInterval) return;
+
+    if (state.cameraDelay === 0) {
+      capturePhotoBlob();
+      return;
+    }
+
+    elements.btnCameraShutter.disabled = true;
+    let remaining = state.cameraDelay;
+    elements.cameraCountdownDisplay.textContent = remaining;
+    elements.cameraCountdownDisplay.classList.remove('hidden');
+    elements.cameraCountdownDisplay.classList.remove('pulse');
+    void elements.cameraCountdownDisplay.offsetWidth;
+    elements.cameraCountdownDisplay.classList.add('pulse');
+    playTone(880, 0.08);
+    playHaptic([30]);
+
+    state.activeCountdownInterval = setInterval(() => {
+      remaining--;
+      if (remaining > 0) {
+        elements.cameraCountdownDisplay.textContent = remaining;
+        elements.cameraCountdownDisplay.classList.remove('pulse');
+        void elements.cameraCountdownDisplay.offsetWidth;
+        elements.cameraCountdownDisplay.classList.add('pulse');
+        playTone(880, 0.08);
+        playHaptic([30]);
+      } else {
+        clearInterval(state.activeCountdownInterval);
+        state.activeCountdownInterval = null;
+        elements.cameraCountdownDisplay.classList.add('hidden');
+        elements.btnCameraShutter.disabled = false;
+        capturePhotoBlob();
+      }
+    }, 1000);
+  }
+
+  function capturePhotoBlob() {
+    playTone(1760, 0.2, 'square');
+    playHaptic([60, 40, 60]);
+
+    if (elements.cameraFlashOverlay) {
+      elements.cameraFlashOverlay.classList.remove('hidden');
+      setTimeout(() => elements.cameraFlashOverlay.classList.add('hidden'), 200);
+    }
+
+    const video = elements.cameraLiveVideo;
+    const vW = (video && video.videoWidth) ? video.videoWidth : 1280;
+    const vH = (video && video.videoHeight) ? video.videoHeight : 720;
+    const canvas = document.createElement('canvas');
+    let w = vW, h = vH;
+    const maxDim = 1600;
+    if (w > maxDim || h > maxDim) {
+      if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+      else { w = Math.round((w * maxDim) / h); h = maxDim; }
+    }
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+
+    if (state.cameraFacing === 'user') {
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, w, h);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        showToast('拍照失敗，請重試', true);
+        closeCountdownCamera();
+        return;
+      }
+      state.selectedPhotoBlob = blob;
+      elements.photoPreviewImg.src = URL.createObjectURL(blob);
+      elements.photoPlaceholder.classList.add('hidden');
+      elements.photoPreviewWrapper.classList.remove('hidden');
+      closeCountdownCamera();
+      showToast('📸 讀秒拍攝完成！相片不存入手機相簿');
+    }, 'image/jpeg', 0.88);
   }
 
   function compressImage(file, maxDimension = 1600, quality = 0.85) {
@@ -513,6 +847,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const bodyFat = elements.bodyFatInput.value ? parseFloat(elements.bodyFatInput.value) : null;
+      const waist = (elements.waistInput && elements.waistInput.value) ? parseFloat(elements.waistInput.value) : null;
+      const hip = (elements.hipInput && elements.hipInput.value) ? parseFloat(elements.hipInput.value) : null;
+      const chest = (elements.chestInput && elements.chestInput.value) ? parseFloat(elements.chestInput.value) : null;
+
       const recordDate = elements.recordDateInput.value || new Date().toISOString();
       const note = elements.noteInput.value.trim();
       const tags = Array.from(state.selectedTags).join(',');
@@ -536,6 +874,9 @@ document.addEventListener('DOMContentLoaded', () => {
           await window.SupabaseService.createRecord({
             weight: weight,
             body_fat: bodyFat,
+            waist_cm: waist,
+            hip_cm: hip,
+            chest_cm: chest,
             record_date: recordDate,
             note: note,
             tags: tags,
@@ -548,6 +889,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const formData = new FormData();
           formData.append('weight', weight);
           if (bodyFat !== null) formData.append('body_fat', bodyFat);
+          if (waist !== null) formData.append('waist_cm', waist);
+          if (hip !== null) formData.append('hip_cm', hip);
+          if (chest !== null) formData.append('chest_cm', chest);
           formData.append('record_date', recordDate);
           formData.append('note', note);
           formData.append('tags', tags);
@@ -563,7 +907,14 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('🎉 本機記錄儲存成功！');
         }
 
+        playTone(1046, 0.1);
+        setTimeout(() => playTone(1318, 0.16), 110);
+        playHaptic([40, 30, 60]);
+
         elements.noteInput.value = '';
+        if (elements.waistInput) elements.waistInput.value = '';
+        if (elements.hipInput) elements.hipInput.value = '';
+        if (elements.chestInput) elements.chestInput.value = '';
         state.selectedTags.clear();
         elements.tagChips.forEach(c => c.classList.remove('active'));
         clearPhotoPreview();
@@ -641,6 +992,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       renderTimeline();
+      updateStreakDisplay();
       if (state.currentTab === 'tab-trends') {
         renderChart(state.chartRange);
       }
@@ -655,11 +1007,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const s = state.stats;
     if (!s || !s.latest) {
       elements.statLatestWeight.textContent = '--';
+      if (elements.statMovingAvg) elements.statMovingAvg.textContent = '--';
+      if (elements.statWeeklyRate) elements.statWeeklyRate.textContent = '週速率: --';
       elements.statDate.textContent = '尚無記錄';
       elements.statChange.textContent = '--';
       elements.statFromStart.textContent = '起始: -- kg';
       elements.statToTarget.textContent = '--';
       elements.statTargetVal.textContent = '目標: -- kg';
+      if (elements.statEtaValue) elements.statEtaValue.textContent = '--';
+      if (elements.statEtaSub) elements.statEtaSub.textContent = '持續記錄後預測';
       elements.statBmi.textContent = '--';
       return;
     }
@@ -699,6 +1055,62 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     elements.statBmiCategory.textContent = category;
     elements.statBmiCategory.className = 'stat-sub ' + catClass;
+
+    if (state.allRecords.length > 0) {
+      const sorted = [...state.allRecords].sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
+      const latestTime = new Date(s.latest.record_date).getTime();
+      const sevenDaysAgo = latestTime - 6 * 24 * 60 * 60 * 1000;
+      const recentRecords = sorted.filter(r => {
+        const t = new Date(r.record_date).getTime();
+        return t >= sevenDaysAgo && t <= latestTime;
+      });
+      const recentSum = recentRecords.reduce((acc, curr) => acc + Number(curr.weight), 0);
+      const latestMA = parseFloat((recentSum / (recentRecords.length || 1)).toFixed(1));
+
+      if (elements.statMovingAvg) {
+        elements.statMovingAvg.textContent = latestMA.toFixed(1);
+      }
+
+      const priorCutoff = sevenDaysAgo - 7 * 24 * 60 * 60 * 1000;
+      const priorRecords = sorted.filter(r => {
+        const t = new Date(r.record_date).getTime();
+        return t >= priorCutoff && t < sevenDaysAgo;
+      });
+
+      let weeklyRate = null;
+      if (priorRecords.length > 0) {
+        const priorSum = priorRecords.reduce((acc, curr) => acc + Number(curr.weight), 0);
+        const priorMA = priorSum / priorRecords.length;
+        weeklyRate = parseFloat((latestMA - priorMA).toFixed(1));
+      } else if (sorted.length >= 2) {
+        const earliest = sorted[0];
+        const spanDays = Math.max(1, (latestTime - new Date(earliest.record_date).getTime()) / (24 * 3600 * 1000));
+        weeklyRate = parseFloat(((s.latest.weight - earliest.weight) / (spanDays / 7)).toFixed(1));
+      }
+
+      if (elements.statWeeklyRate) {
+        if (weeklyRate !== null && !isNaN(weeklyRate)) {
+          elements.statWeeklyRate.textContent = weeklyRate < 0 ? `週速率: ${weeklyRate.toFixed(1)} kg/週` : `週速率: +${weeklyRate.toFixed(1)} kg/週`;
+        } else {
+          elements.statWeeklyRate.textContent = '週速率: 持續記錄中';
+        }
+      }
+
+      if (elements.statEtaValue) {
+        if (s.latest.weight <= target) {
+          elements.statEtaValue.textContent = '已達標! 🎉';
+          if (elements.statEtaSub) elements.statEtaSub.textContent = '恭喜達成目標體重';
+        } else if (weeklyRate !== null && weeklyRate < 0) {
+          const weeksLeft = (s.latest.weight - target) / (-weeklyRate);
+          const etaDate = new Date(Date.now() + weeksLeft * 7 * 24 * 60 * 60 * 1000);
+          elements.statEtaValue.textContent = `${etaDate.getMonth() + 1}/${etaDate.getDate()} (約 ${Math.ceil(weeksLeft)} 週)`;
+          if (elements.statEtaSub) elements.statEtaSub.textContent = '依近期速率預估';
+        } else {
+          elements.statEtaValue.textContent = '--';
+          if (elements.statEtaSub) elements.statEtaSub.textContent = '需更多下降數據';
+        }
+      }
+    }
   }
 
   function initChartControls() {
@@ -710,6 +1122,15 @@ document.addEventListener('DOMContentLoaded', () => {
         renderChart(state.chartRange);
       });
     });
+
+    if (elements.btnToggleMA7) {
+      elements.btnToggleMA7.addEventListener('click', () => {
+        state.chartShowMA7 = !state.chartShowMA7;
+        elements.btnToggleMA7.classList.toggle('active', state.chartShowMA7);
+        elements.btnToggleMA7.textContent = `MA7 均線: ${state.chartShowMA7 ? '開' : '關'}`;
+        renderChart(state.chartRange);
+      });
+    }
   }
 
   function renderChart(daysRange) {
@@ -717,6 +1138,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let records = [...state.allRecords];
     if (records.length === 0) return;
+
+    const allChronological = [...state.allRecords].sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
 
     const now = new Date();
     if (daysRange !== 'all') {
@@ -733,6 +1156,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const dataPoints = records.map(r => Number(r.weight));
 
+    const ma7Points = records.map(r => {
+      const rTime = new Date(r.record_date).getTime();
+      const startTime = rTime - 6 * 24 * 60 * 60 * 1000;
+      const windowRecords = allChronological.filter(item => {
+        const t = new Date(item.record_date).getTime();
+        return t >= startTime && t <= rTime;
+      });
+      const sum = windowRecords.reduce((acc, curr) => acc + Number(curr.weight), 0);
+      return parseFloat((sum / (windowRecords.length || 1)).toFixed(1));
+    });
+
     const targetWeight = (state.stats && state.stats.target_weight) ? Number(state.stats.target_weight) : 65.0;
 
     const ctx = elements.weightChartCanvas.getContext('2d');
@@ -745,35 +1179,52 @@ document.addEventListener('DOMContentLoaded', () => {
       state.chartInstance.destroy();
     }
 
+    const datasets = [
+      {
+        label: '體重 (kg)',
+        data: dataPoints,
+        borderColor: '#10b981',
+        backgroundColor: gradient,
+        borderWidth: 3,
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: true,
+        tension: 0.35
+      }
+    ];
+
+    if (state.chartShowMA7) {
+      datasets.push({
+        label: '7日均線 (MA7)',
+        data: ma7Points,
+        borderColor: '#f59e0b',
+        borderWidth: 2,
+        borderDash: [5, 4],
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        fill: false,
+        tension: 0.35
+      });
+    }
+
+    datasets.push({
+      label: '目標體重',
+      data: new Array(labels.length).fill(targetWeight),
+      borderColor: 'rgba(6, 182, 212, 0.6)',
+      borderWidth: 1.5,
+      borderDash: [5, 5],
+      pointRadius: 0,
+      fill: false
+    });
+
     state.chartInstance = new Chart(ctx, {
       type: 'line',
       data: {
         labels: labels,
-        datasets: [
-          {
-            label: '體重 (kg)',
-            data: dataPoints,
-            borderColor: '#10b981',
-            backgroundColor: gradient,
-            borderWidth: 3,
-            pointBackgroundColor: '#10b981',
-            pointBorderColor: '#ffffff',
-            pointBorderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            fill: true,
-            tension: 0.35
-          },
-          {
-            label: '目標體重',
-            data: new Array(labels.length).fill(targetWeight),
-            borderColor: 'rgba(6, 182, 212, 0.6)',
-            borderWidth: 1.5,
-            borderDash: [5, 5],
-            pointRadius: 0,
-            fill: false
-          }
-        ]
+        datasets: datasets
       },
       options: {
         responsive: true,
@@ -869,6 +1320,12 @@ document.addEventListener('DOMContentLoaded', () => {
            </div>`
         : '';
 
+      const tapeBadges = [
+        record.waist_cm ? `<span class="timeline-tape-badge">腰 ${record.waist_cm}cm</span>` : '',
+        record.hip_cm ? `<span class="timeline-tape-badge">臀 ${record.hip_cm}cm</span>` : '',
+        record.chest_cm ? `<span class="timeline-tape-badge">胸 ${record.chest_cm}cm</span>` : ''
+      ].filter(Boolean).join('');
+
       return `
         <div class="timeline-card" data-id="${record.id}">
           <div class="timeline-card-header">
@@ -880,6 +1337,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <div class="timeline-card-body">
             ${record.body_fat ? `<div style="font-size:12px;color:#06b6d4;margin-bottom:6px">體脂率: ${record.body_fat}%</div>` : ''}
+            ${tapeBadges ? `<div class="timeline-tape-badges">${tapeBadges}</div>` : ''}
             ${tagsHtml ? `<div class="timeline-tags">${tagsHtml}</div>` : ''}
             ${record.note ? `<p class="timeline-note">${escapeHtml(record.note)}</p>` : ''}
           </div>
@@ -955,6 +1413,31 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.compareBeforeSelect.addEventListener('change', updateComparisonDisplay);
     elements.compareAfterSelect.addEventListener('change', updateComparisonDisplay);
 
+    if (elements.btnGenerateCollage) {
+      elements.btnGenerateCollage.addEventListener('click', generateTransformationCollage);
+    }
+
+    if (elements.btnCloseCollageModal) {
+      elements.btnCloseCollageModal.addEventListener('click', () => {
+        elements.collageModal.classList.add('hidden');
+      });
+    }
+
+    elements.collageModal.addEventListener('click', (e) => {
+      if (e.target === elements.collageModal) elements.collageModal.classList.add('hidden');
+    });
+
+    if (elements.btnDownloadCollage) {
+      elements.btnDownloadCollage.addEventListener('click', () => {
+        const url = elements.collageOutputImg.src;
+        if (!url) return;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `FitTrack-Transformation-${new Date().toISOString().substring(0, 10)}.jpg`;
+        a.click();
+      });
+    }
+
     initSliderInteraction();
   }
 
@@ -1017,7 +1500,455 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.compareWeightDiff.textContent = diff <= 0 ? `${diff} kg 🎉` : `+${diff} kg`;
     elements.compareDaysDiff.textContent = days;
+
+    if (beforeRecord.waist_cm && afterRecord.waist_cm) {
+      const wDiff = parseFloat((Number(afterRecord.waist_cm) - Number(beforeRecord.waist_cm)).toFixed(1));
+      elements.compareWaistDiff.textContent = wDiff <= 0 ? `${wDiff} cm` : `+${wDiff} cm`;
+      elements.compareWaistDiffWrap.classList.remove('hidden');
+    } else {
+      elements.compareWaistDiffWrap.classList.add('hidden');
+    }
+
     elements.compareSummaryBadge.classList.remove('hidden');
+  }
+
+  async function generateTransformationCollage() {
+    const beforeId = String(elements.compareBeforeSelect.value);
+    const afterId = String(elements.compareAfterSelect.value);
+
+    const beforeRecord = state.allRecords.find(r => String(r.id) === beforeId);
+    const afterRecord = state.allRecords.find(r => String(r.id) === afterId);
+
+    if (!beforeRecord || !afterRecord) {
+      showToast('請先選擇 Before 與 After 兩筆紀錄', true);
+      return;
+    }
+
+    const beforeUrl = getRecordPhotoUrl(beforeRecord);
+    const afterUrl = getRecordPhotoUrl(afterRecord);
+
+    if (!beforeUrl || !afterUrl) {
+      showToast('所選記錄缺少照片，無法生成海報', true);
+      return;
+    }
+
+    showToast('✨ 正在繪製高清對比海報...');
+
+    try {
+      const [beforeBlob, afterBlob] = await Promise.all([
+        fetch(beforeUrl).then(r => r.blob()),
+        fetch(afterUrl).then(r => r.blob())
+      ]);
+
+      const [imgBefore, imgAfter] = await Promise.all([
+        createImageFromBlob(beforeBlob),
+        createImageFromBlob(afterBlob)
+      ]);
+
+      const canvas = elements.collageCanvas;
+      canvas.width = 1080;
+      canvas.height = 1350;
+      const ctx = canvas.getContext('2d');
+
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, 1350);
+      bgGrad.addColorStop(0, '#0f172a');
+      bgGrad.addColorStop(0.5, '#0b0f19');
+      bgGrad.addColorStop(1, '#020617');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, 1080, 1350);
+
+      const glowGrad = ctx.createRadialGradient(200, 200, 10, 200, 200, 300);
+      glowGrad.addColorStop(0, 'rgba(16, 185, 129, 0.14)');
+      glowGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+      ctx.fillStyle = glowGrad;
+      ctx.fillRect(0, 0, 600, 500);
+
+      const glowGrad2 = ctx.createRadialGradient(880, 200, 10, 880, 200, 300);
+      glowGrad2.addColorStop(0, 'rgba(56, 189, 248, 0.14)');
+      glowGrad2.addColorStop(1, 'rgba(56, 189, 248, 0)');
+      ctx.fillStyle = glowGrad2;
+      ctx.fillRect(500, 0, 600, 500);
+
+      ctx.fillStyle = '#10b981';
+      roundRect(ctx, 440, 42, 200, 32, 16);
+      ctx.fill();
+
+      ctx.font = '700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText('FitTrack TRANSFORMATION', 540, 64);
+
+      ctx.font = '900 34px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText('體 態 蛻 變 對 比 記 錄', 540, 116);
+
+      ctx.font = '500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('持 之 以 恆 • 見 證 每 一 步 蛻 變', 540, 146);
+
+      const cardW = 470;
+      const cardH = 820;
+      const cardY = 175;
+      const leftX = 50;
+      const rightX = 560;
+
+      drawPhotoCard(ctx, imgBefore, leftX, cardY, cardW, cardH, 'BEFORE', beforeRecord);
+      drawPhotoCard(ctx, imgAfter, rightX, cardY, cardW, cardH, 'AFTER', afterRecord);
+
+      const bannerX = 50;
+      const bannerY = 1025;
+      const bannerW = 980;
+      const bannerH = 170;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 2;
+      roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 24);
+      ctx.fill();
+      ctx.stroke();
+
+      const diffVal = parseFloat((Number(afterRecord.weight) - Number(beforeRecord.weight)).toFixed(1));
+      const daysCount = Math.abs(Math.round((new Date(afterRecord.record_date) - new Date(beforeRecord.record_date)) / (1000 * 60 * 60 * 24)));
+
+      let waistDiff = null;
+      if (beforeRecord.waist_cm && afterRecord.waist_cm) {
+        waistDiff = (afterRecord.waist_cm - beforeRecord.waist_cm).toFixed(1);
+      }
+
+      const colCount = waistDiff !== null ? 3 : 2;
+      const colWidth = bannerW / colCount;
+
+      ctx.textAlign = 'center';
+      ctx.font = '600 16px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('體 重 變 化', bannerX + colWidth * 0.5, bannerY + 48);
+
+      ctx.font = '900 48px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = diffVal <= 0 ? '#10b981' : '#f43f5e';
+      ctx.fillText((diffVal <= 0 ? `${diffVal} kg` : `+${diffVal} kg`), bannerX + colWidth * 0.5, bannerY + 110);
+
+      ctx.font = '600 16px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('蛻 變 歷 時', bannerX + colWidth * 1.5, bannerY + 48);
+
+      ctx.font = '900 48px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(`${daysCount} 天`, bannerX + colWidth * 1.5, bannerY + 110);
+
+      if (colCount === 3) {
+        ctx.font = '600 16px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('腰 圍 縮 減', bannerX + colWidth * 2.5, bannerY + 48);
+
+        ctx.font = '900 48px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = waistDiff <= 0 ? '#f59e0b' : '#f43f5e';
+        ctx.fillText((waistDiff <= 0 ? `${waistDiff} cm` : `+${waistDiff} cm`), bannerX + colWidth * 2.5, bannerY + 110);
+      }
+
+      ctx.restore();
+
+      ctx.textAlign = 'center';
+      ctx.font = '500 16px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+      ctx.fillText('🔒 FitTrack 私人體態保險箱 • 專屬端對端隱私加密存儲', 540, 1260);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      elements.collageOutputImg.src = dataUrl;
+      elements.collageModal.classList.remove('hidden');
+      showToast('🎉 對比海報已生成！');
+
+    } catch (err) {
+      console.error('Collage error:', err);
+      showToast('生成海報失敗：' + err.message, true);
+    }
+  }
+
+  function createImageFromBlob(blob) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  function roundRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+
+  function drawPhotoCard(ctx, img, x, y, w, h, label, record) {
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 20);
+    ctx.clip();
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x, y, w, h);
+
+    const imgRatio = img.width / img.height;
+    const boxRatio = w / h;
+    let sW, sH, sX, sY;
+    if (imgRatio > boxRatio) {
+      sH = img.height;
+      sW = img.height * boxRatio;
+      sX = (img.width - sW) / 2;
+      sY = 0;
+    } else {
+      sW = img.width;
+      sH = img.width / boxRatio;
+      sX = 0;
+      sY = (img.height - sH) / 2;
+    }
+    ctx.drawImage(img, sX, sY, sW, sH, x, y, w, h);
+
+    const grad = ctx.createLinearGradient(x, y + h - 220, x, y + h);
+    grad.addColorStop(0, 'rgba(15, 23, 42, 0)');
+    grad.addColorStop(0.5, 'rgba(15, 23, 42, 0.7)');
+    grad.addColorStop(1, 'rgba(15, 23, 42, 0.96)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y + h - 220, w, 220);
+
+    const badgeBg = label === 'BEFORE' ? 'rgba(71, 85, 105, 0.88)' : 'rgba(16, 185, 129, 0.9)';
+    ctx.fillStyle = badgeBg;
+    roundRect(ctx, x + 20, y + 20, 110, 36, 18);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 16px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + 75, y + 44);
+
+    const dateStr = record.record_date.substring(0, 10);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '600 18px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText(dateStr, x + 24, y + h - 90);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '900 38px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText(`${Number(record.weight).toFixed(1)} kg`, x + 24, y + h - 45);
+
+    const subDetails = [];
+    if (record.body_fat) subDetails.push(`體脂 ${record.body_fat}%`);
+    if (record.waist_cm) subDetails.push(`腰圍 ${record.waist_cm}cm`);
+    if (subDetails.length > 0) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '600 16px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillText(subDetails.join(' • '), x + 24, y + h - 18);
+    }
+
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, x, y, w, h, 20);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function computeStreak(records) {
+    if (!records || records.length === 0) return 0;
+    const dateSet = new Set(records.map(r => r.record_date.substring(0, 10)));
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const toKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    let checkDate = new Date(now);
+    let key = toKey(checkDate);
+    if (!dateSet.has(key)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+      key = toKey(checkDate);
+      if (!dateSet.has(key)) return 0;
+    }
+
+    let streak = 0;
+    while (dateSet.has(key)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+      key = toKey(checkDate);
+    }
+    return streak;
+  }
+
+  function updateStreakDisplay() {
+    const streak = computeStreak(state.allRecords);
+    if (elements.streakCount) elements.streakCount.textContent = streak;
+    if (elements.calendarStreakBadge) elements.calendarStreakBadge.textContent = streak;
+  }
+
+  function initCalendarModule() {
+    if (elements.btnOpenCalendar) {
+      elements.btnOpenCalendar.addEventListener('click', () => {
+        elements.calendarModal.classList.remove('hidden');
+        renderMonthlyCalendar();
+      });
+    }
+
+    if (elements.btnCloseCalendarModal) {
+      elements.btnCloseCalendarModal.addEventListener('click', () => {
+        elements.calendarModal.classList.add('hidden');
+      });
+    }
+
+    elements.calendarModal.addEventListener('click', (e) => {
+      if (e.target === elements.calendarModal) {
+        elements.calendarModal.classList.add('hidden');
+      }
+    });
+
+    if (elements.btnPrevMonth) {
+      elements.btnPrevMonth.addEventListener('click', () => {
+        state.calendarMonth--;
+        if (state.calendarMonth < 0) {
+          state.calendarMonth = 11;
+          state.calendarYear--;
+        }
+        renderMonthlyCalendar();
+      });
+    }
+
+    if (elements.btnNextMonth) {
+      elements.btnNextMonth.addEventListener('click', () => {
+        state.calendarMonth++;
+        if (state.calendarMonth > 11) {
+          state.calendarMonth = 0;
+          state.calendarYear++;
+        }
+        renderMonthlyCalendar();
+      });
+    }
+  }
+
+  function renderMonthlyCalendar() {
+    if (!elements.calendarDaysGrid || !elements.calendarMonthTitle) return;
+
+    elements.calendarMonthTitle.textContent = `${state.calendarYear} 年 ${state.calendarMonth + 1} 月`;
+
+    const firstDayIndex = new Date(state.calendarYear, state.calendarMonth, 1).getDay();
+    const daysInMonth = new Date(state.calendarYear, state.calendarMonth + 1, 0).getDate();
+
+    const sortedChronological = [...state.allRecords].sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
+    const lowestDates = new Set();
+    let minWeight = Infinity;
+    sortedChronological.forEach(r => {
+      const w = Number(r.weight);
+      if (w < minWeight) {
+        minWeight = w;
+        lowestDates.add(r.record_date.substring(0, 10));
+      }
+    });
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const todayKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    let gridHtml = '';
+
+    for (let i = 0; i < firstDayIndex; i++) {
+      gridHtml += `<div class="calendar-day empty"></div>`;
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateKey = `${state.calendarYear}-${pad(state.calendarMonth + 1)}-${pad(day)}`;
+      const dayRecords = state.allRecords.filter(r => r.record_date.startsWith(dateKey));
+      const hasWeight = dayRecords.length > 0;
+      const hasPhoto = dayRecords.some(r => r.photo_path || r.photo_url);
+      const isLowest = lowestDates.has(dateKey);
+      const isToday = dateKey === todayKey;
+
+      let dots = '';
+      if (hasWeight) dots += '<i class="dot dot-green"></i>';
+      if (hasPhoto) dots += '<i class="dot dot-purple"></i>';
+      if (isLowest) dots += '<i class="dot dot-star">⭐</i>';
+
+      gridHtml += `
+        <div class="calendar-day ${hasWeight ? 'has-record' : ''} ${isToday ? 'today' : ''}" data-date="${dateKey}">
+          <span class="day-num">${day}</span>
+          <div class="day-indicators">${dots}</div>
+        </div>
+      `;
+    }
+
+    elements.calendarDaysGrid.innerHTML = gridHtml;
+
+    elements.calendarDaysGrid.querySelectorAll('.calendar-day[data-date]').forEach(cell => {
+      cell.addEventListener('click', () => {
+        elements.calendarDaysGrid.querySelectorAll('.calendar-day').forEach(c => c.classList.remove('selected'));
+        cell.classList.add('selected');
+
+        const dateKey = cell.dataset.date;
+        state.selectedCalendarDate = dateKey;
+        renderCalendarDayDetails(dateKey);
+      });
+    });
+  }
+
+  function renderCalendarDayDetails(dateKey) {
+    if (!elements.calendarSelectedDayInfo) return;
+
+    const records = state.allRecords.filter(r => r.record_date.startsWith(dateKey));
+    if (records.length === 0) {
+      elements.calendarSelectedDayInfo.innerHTML = `
+        <div style="font-weight:700; color:#fff; font-size:14px; margin-bottom:4px;">${dateKey}</div>
+        <div style="color:var(--text-secondary); font-size:12px;">該日尚無體態紀錄</div>
+      `;
+      elements.calendarSelectedDayInfo.classList.remove('hidden');
+      return;
+    }
+
+    const cardsHtml = records.map(r => {
+      const photoUrl = getRecordPhotoUrl(r);
+      const photoThumb = photoUrl
+        ? `<div class="cal-thumb-wrap" data-photo="${escapeHtml(photoUrl)}" data-info="${dateKey} • ${r.weight}kg">
+             <img src="${escapeHtml(photoUrl)}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;cursor:pointer;">
+           </div>`
+        : '';
+
+      const tapeInfo = [
+        r.waist_cm ? `腰: ${r.waist_cm}cm` : '',
+        r.hip_cm ? `臀: ${r.hip_cm}cm` : '',
+        r.chest_cm ? `胸: ${r.chest_cm}cm` : ''
+      ].filter(Boolean).join(' • ');
+
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.04); border-radius:10px; padding:8px 12px; margin-top:6px;">
+          <div>
+            <div style="font-size:16px; font-weight:800; color:#10b981;">${Number(r.weight).toFixed(1)} <small style="font-size:12px; color:#94a3b8;">kg</small></div>
+            ${r.body_fat ? `<div style="font-size:12px; color:#38bdf8;">體脂: ${r.body_fat}%</div>` : ''}
+            ${tapeInfo ? `<div style="font-size:12px; color:#f59e0b;">${tapeInfo}</div>` : ''}
+            ${r.note ? `<div style="font-size:12px; color:#cbd5e1; margin-top:2px;">${escapeHtml(r.note)}</div>` : ''}
+          </div>
+          ${photoThumb}
+        </div>
+      `;
+    }).join('');
+
+    elements.calendarSelectedDayInfo.innerHTML = `
+      <div style="font-weight:700; color:#fff; font-size:14px; margin-bottom:4px;">📅 ${dateKey} (共 ${records.length} 筆)</div>
+      ${cardsHtml}
+    `;
+    elements.calendarSelectedDayInfo.classList.remove('hidden');
+
+    elements.calendarSelectedDayInfo.querySelectorAll('.cal-thumb-wrap').forEach(wrap => {
+      wrap.addEventListener('click', () => {
+        openPhotoModal(wrap.dataset.photo, wrap.dataset.info);
+      });
+    });
   }
 
   function initSliderInteraction() {
@@ -1237,11 +2168,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initSteppers();
   initTagChips();
   initAngleSelector();
+  initTapeModule();
   initCameraCapture();
+  initCountdownCamera();
   initFormSubmit();
   initChartControls();
   initTimelineFilter();
   initComparisonModule();
+  initCalendarModule();
   initSupabaseControls();
   initSettingsHandlers();
   initQrModal();

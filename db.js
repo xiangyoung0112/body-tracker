@@ -22,6 +22,9 @@ function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       weight REAL NOT NULL,
       body_fat REAL,
+      waist_cm REAL,
+      hip_cm REAL,
+      chest_cm REAL,
       record_date TEXT NOT NULL,
       note TEXT,
       tags TEXT,
@@ -35,6 +38,10 @@ function initDb() {
       value TEXT
     );
   `);
+
+  try { db.exec(`ALTER TABLE records ADD COLUMN waist_cm REAL;`); } catch (e) {}
+  try { db.exec(`ALTER TABLE records ADD COLUMN hip_cm REAL;`); } catch (e) {}
+  try { db.exec(`ALTER TABLE records ADD COLUMN chest_cm REAL;`); } catch (e) {}
 
   // Initialize default settings if not already present
   const defaultSettings = [
@@ -82,15 +89,18 @@ const recordDao = {
   },
 
   // Insert a new record
-  create({ weight, body_fat, record_date, note, tags, photo_path, photo_angle }) {
+  create({ weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_path, photo_angle }) {
     const createdAt = new Date().toISOString();
     const stmt = db.prepare(`
-      INSERT INTO records (weight, body_fat, record_date, note, tags, photo_path, photo_angle, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO records (weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_path, photo_angle, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       parseFloat(weight),
       body_fat ? parseFloat(body_fat) : null,
+      waist_cm ? parseFloat(waist_cm) : null,
+      hip_cm ? parseFloat(hip_cm) : null,
+      chest_cm ? parseFloat(chest_cm) : null,
       record_date || createdAt.substring(0, 10),
       note || '',
       tags || '',

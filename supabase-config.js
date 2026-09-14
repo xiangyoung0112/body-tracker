@@ -275,7 +275,7 @@ window.SupabaseService = (() => {
       return records;
     },
 
-    async createRecord({ weight, body_fat, record_date, note, tags, photo_path, photo_angle }) {
+    async createRecord({ weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_path, photo_angle }) {
       if (!client) throw new Error('Supabase 尚未初始化');
 
       const user = await this.getCurrentUser();
@@ -283,6 +283,9 @@ window.SupabaseService = (() => {
       const payload = {
         weight: parseFloat(weight),
         body_fat: body_fat ? parseFloat(body_fat) : null,
+        waist_cm: waist_cm ? parseFloat(waist_cm) : null,
+        hip_cm: hip_cm ? parseFloat(hip_cm) : null,
+        chest_cm: chest_cm ? parseFloat(chest_cm) : null,
         record_date: record_date || new Date().toISOString(),
         note: note || '',
         tags: tags || '',

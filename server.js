@@ -100,7 +100,7 @@ app.get('/api/records/:id', (req, res) => {
 // 3. Create new record with optional photo
 app.post('/api/records', upload.single('photo'), (req, res) => {
   try {
-    const { weight, body_fat, record_date, note, tags, photo_angle } = req.body;
+    const { weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_angle } = req.body;
 
     if (!weight || isNaN(parseFloat(weight))) {
       return res.status(400).json({ success: false, error: '請輸入有效的體重數值' });
@@ -111,6 +111,9 @@ app.post('/api/records', upload.single('photo'), (req, res) => {
     const newRecord = recordDao.create({
       weight: parseFloat(weight),
       body_fat: body_fat ? parseFloat(body_fat) : null,
+      waist_cm: waist_cm ? parseFloat(waist_cm) : null,
+      hip_cm: hip_cm ? parseFloat(hip_cm) : null,
+      chest_cm: chest_cm ? parseFloat(chest_cm) : null,
       record_date: record_date || new Date().toISOString().substring(0, 10),
       note: note || '',
       tags: tags || '',
