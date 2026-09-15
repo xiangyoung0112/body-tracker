@@ -280,8 +280,12 @@ window.SupabaseService = (() => {
 
       const user = await this.getCurrentUser();
 
+      const weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
+        ? parseFloat(weight)
+        : null;
+
       const payload = {
-        weight: parseFloat(weight),
+        weight: weightVal,
         body_fat: body_fat ? parseFloat(body_fat) : null,
         waist_cm: waist_cm ? parseFloat(waist_cm) : null,
         hip_cm: hip_cm ? parseFloat(hip_cm) : null,
@@ -346,12 +350,14 @@ window.SupabaseService = (() => {
         };
       }
 
-      const records = await this.getAllRecords();
+      const records = await this.getAllRecords(false);
       const settings = await this.getSettings();
 
-      if (records.length === 0) {
+      const withWeight = (records || []).filter(r => r.weight !== null && r.weight !== undefined && !isNaN(Number(r.weight)));
+
+      if (withWeight.length === 0) {
         return {
-          total_count: 0,
+          total_count: (records || []).length,
           latest: null,
           earliest: null,
           min_weight: null,
@@ -362,13 +368,13 @@ window.SupabaseService = (() => {
         };
       }
 
-      const chron = [...records].sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
+      const chron = [...withWeight].sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
       const earliest = chron[0];
       const latest = chron[chron.length - 1];
 
-      let minW = records[0].weight;
-      let maxW = records[0].weight;
-      for (const r of records) {
+      let minW = withWeight[0].weight;
+      let maxW = withWeight[0].weight;
+      for (const r of withWeight) {
         if (r.weight < minW) minW = r.weight;
         if (r.weight > maxW) maxW = r.weight;
       }
@@ -376,7 +382,7 @@ window.SupabaseService = (() => {
       const diff = parseFloat((latest.weight - earliest.weight).toFixed(1));
 
       return {
-        total_count: records.length,
+        total_count: (records || []).length,
         latest: latest,
         earliest: earliest,
         min_weight: minW,

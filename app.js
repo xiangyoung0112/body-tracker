@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraFacing: 'environment',
     cameraDelay: 3,
     cameraFitMode: 'contain',
+    cameraSilhouetteEnabled: false,
+    privacyMode: localStorage.getItem('fittrack_privacy_blur') === 'true',
+    weightSkipped: false,
     previewFitMode: 'contain',
     ghostEnabled: true,
     ghostOpacity: 0.35,
@@ -179,6 +182,15 @@ document.addEventListener('DOMContentLoaded', () => {
     btnModalSaveSupabase: document.getElementById('btnModalSaveSupabase'),
     btnCloseSupabaseModal: document.getElementById('btnCloseSupabaseModal'),
 
+    btnPrivacyToggle: document.getElementById('btnPrivacyToggle'),
+    privacyIcon: document.getElementById('privacyIcon'),
+    photoStreakCount: document.getElementById('photoStreakCount'),
+    btnSkipWeight: document.getElementById('btnSkipWeight'),
+    weightInputGroup: document.getElementById('weightInputGroup'),
+    skipWeightNotice: document.getElementById('skipWeightNotice'),
+    btnCameraSilhouetteToggle: document.getElementById('btnCameraSilhouetteToggle'),
+    cameraSilhouetteOverlay: document.getElementById('cameraSilhouetteOverlay'),
+    btnExportDailyShowcase: document.getElementById('btnExportDailyShowcase'),
     dayAlbumModal: document.getElementById('dayAlbumModal'),
     btnCloseDayAlbumModal: document.getElementById('btnCloseDayAlbumModal'),
     dayAlbumModalTitle: document.getElementById('dayAlbumModalTitle'),
@@ -706,6 +718,19 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    if (elements.btnCameraSilhouetteToggle) {
+      elements.btnCameraSilhouetteToggle.addEventListener('click', () => {
+        state.silhouetteEnabled = !state.silhouetteEnabled;
+        elements.btnCameraSilhouetteToggle.classList.toggle('active', state.silhouetteEnabled);
+        elements.btnCameraSilhouetteToggle.innerHTML = state.silhouetteEnabled ? '👤 定位: 開' : '👤 定位: 關';
+        if (elements.cameraSilhouetteOverlay) {
+          elements.cameraSilhouetteOverlay.classList.toggle('hidden', !state.silhouetteEnabled);
+        }
+        playTone(620, 0.04);
+        playHaptic([15]);
+      });
+    }
+
     if (elements.btnCameraShutter) {
       elements.btnCameraShutter.addEventListener('click', triggerCameraShutter);
     }
@@ -957,6 +982,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const duplicateAngle = pendingPhotos.find(photo => existingDayPhotos.some(r => (r.photo_angle || 'front') === photo.angle));
       if (duplicateAngle) {
         showToast(`${dayKey} 已有${photoAngleLabels[duplicateAngle.angle]}；請先刪除舊照片再替換`, true);
+        return;
+      }
+
+      const hasAnyData = (weight !== null) || pendingPhotos.length > 0 || (waist !== null) || (hip !== null) || (chest !== null) || (bodyFat !== null) || (note.length > 0);
+      if (!hasAnyData) {
+        showToast('請至少輸入體重、拍攝體態照片或填寫圍度/筆記', true);
         return;
       }
 
@@ -2111,6 +2142,189 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+
+  function applyPrivacyMode(enabled) {
+    state.privacyMode = enabled;
+    document.body.classList.toggle('privacy-mode', enabled);
+    if (elements.privacyIcon) elements.privacyIcon.textContent = enabled ? '🕶️' : '👁️';
+    localStorage.setItem('fittrack_privacy_blur', enabled ? 'true' : 'false');
+  }
+
+  async function generateDailyShowcase(dateKey, dayRecords) {
+    const anglePriority = { front: 1, side: 2, back: 3 };
+    const angleLabels = { front: 'FRONT 正面', side: 'SIDE 側面', back: 'BACK 背面' };
+    const dayPhotos = dayRecords.filter(r => r.photo_path || r.photo_url)
+      .sort((a, b) => (anglePriority[a.photo_angle] || 99) - (anglePriority[b.photo_angle] || 99));
+
+    if (dayPhotos.length === 0) {
+      showToast('當日無照片，無法生成成果海報', true);
+      return;
+    }
+
+    showToast('✨ 正在繪製三角度成果海報...');
+
+    try {
+      const loadedImages = await Promise.all(dayPhotos.map(async p => {
+        const url = getRecordPhotoUrl(p);
+        const blob = await fetch(url).then(r => r.blob());
+        const img = await createImageFromBlob(blob);
+        return { img, angle: p.photo_angle || 'front' };
+      }));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1350;
+      const ctx = canvas.getContext('2d');
+
+      // Gradient background
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, 1350);
+      bgGrad.addColorStop(0, '#0f172a');
+      bgGrad.addColorStop(0.5, '#0b0f19');
+      bgGrad.addColorStop(1, '#020617');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, 1080, 1350);
+
+      // Header Tag
+      ctx.fillStyle = '#06b6d4';
+      roundRect(ctx, 390, 42, 300, 32, 16);
+      ctx.fill();
+
+      ctx.font = '700 14px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#020617';
+      ctx.textAlign = 'center';
+      ctx.fillText('FitTrack DAILY SHOWCASE', 540, 63);
+
+      // Title
+      ctx.font = '900 36px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(`${dateKey} 體態寫真成果`, 540, 116);
+
+      ctx.font = '500 16px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('鏡子與相片永遠不說謊 • 見證真實蛻變', 540, 146);
+
+      // Photo Layout
+      const count = loadedImages.length;
+      const cardY = 175;
+      const cardH = 800;
+      const totalW = 980;
+      const startX = 50;
+      const gap = 14;
+
+      if (count === 3) {
+        const colW = (totalW - gap * 2) / 3;
+        loadedImages.forEach((item, i) => {
+          const colX = startX + i * (colW + gap);
+          drawShowcasePhotoCard(ctx, item.img, colX, cardY, colW, cardH, angleLabels[item.angle]);
+        });
+      } else if (count === 2) {
+        const colW = (totalW - gap) / 2;
+        loadedImages.forEach((item, i) => {
+          const colX = startX + i * (colW + gap);
+          drawShowcasePhotoCard(ctx, item.img, colX, cardY, colW, cardH, angleLabels[item.angle]);
+        });
+      } else {
+        const colW = 680;
+        const colX = 540 - colW / 2;
+        drawShowcasePhotoCard(ctx, loadedImages[0].img, colX, cardY, colW, cardH, angleLabels[loadedImages[0].angle]);
+      }
+
+      // Bottom stats footer
+      const bannerX = 50;
+      const bannerY = 1005;
+      const bannerW = 980;
+      const bannerH = 180;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 2;
+      roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 20);
+      ctx.fill();
+      ctx.stroke();
+
+      const latestRec = dayRecords[0];
+      const dayWeight = (latestRec && latestRec.weight !== null && latestRec.weight !== undefined) ? `${Number(latestRec.weight).toFixed(1)} kg` : '純拍體態 (無秤重)';
+      const dayFat = dayRecords.find(r => r.body_fat)?.body_fat;
+      const dayWaist = dayRecords.find(r => r.waist_cm)?.waist_cm;
+
+      ctx.textAlign = 'center';
+      ctx.font = '600 16px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('當日體重', bannerX + bannerW * 0.25, bannerY + 50);
+
+      ctx.font = '900 40px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(dayWeight, bannerX + bannerW * 0.25, bannerY + 110);
+
+      ctx.font = '600 16px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(dayWaist ? '腰圍數據' : '體脂率', bannerX + bannerW * 0.75, bannerY + 50);
+
+      ctx.font = '900 40px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#10b981';
+      ctx.fillText(dayWaist ? `${dayWaist} cm` : dayFat ? `${dayFat}%` : '線條持續進步', bannerX + bannerW * 0.75, bannerY + 110);
+
+      ctx.font = '500 14px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('FITTRACK PRIVATE VAULT • 體態記錄保險箱', 540, 1260);
+
+      ctx.restore();
+
+      // Download directly
+      const dataUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `fittrack-showcase-${dateKey}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('🎉 三角度成果海報已成功產生並開始下載！');
+      playTone(1046, 0.15);
+      playHaptic([40, 30, 60]);
+
+    } catch (err) {
+      console.error('Showcase error:', err);
+      showToast('海報生成失敗：' + err.message, true);
+    }
+  }
+
+  function drawShowcasePhotoCard(ctx, img, x, y, w, h, label) {
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 16);
+    ctx.clip();
+
+    ctx.fillStyle = '#030712';
+    ctx.fillRect(x, y, w, h);
+
+    const imgRatio = img.width / img.height;
+    const boxRatio = w / h;
+    let dW, dH, dX, dY;
+    if (imgRatio > boxRatio) {
+      dW = w;
+      dH = w / imgRatio;
+      dX = x;
+      dY = y + (h - dH) / 2;
+    } else {
+      dH = h;
+      dW = h * imgRatio;
+      dX = x + (w - dW) / 2;
+      dY = y;
+    }
+    ctx.drawImage(img, 0, 0, img.width, img.height, dX, dY, dW, dH);
+
+    // Overlay Badge
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.88)';
+    roundRect(ctx, x + 12, y + 14, Math.min(130, w - 24), 28, 14);
+    ctx.fill();
+
+    ctx.font = '700 12px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#020617';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + 12 + Math.min(130, w - 24) / 2, y + 33);
+
+    ctx.restore();
+  }
   function renderMonthlyCalendar() {
     if (!elements.calendarDaysGrid || !elements.calendarMonthTitle) return;
 
@@ -2497,6 +2711,41 @@ elements.photoModal.addEventListener('click', (e) => {
   }
 
   initDateTimeInput();
+    applyPrivacyMode(state.privacyMode);
+
+    if (elements.btnPrivacyToggle) {
+      elements.btnPrivacyToggle.addEventListener('click', () => {
+        applyPrivacyMode(!state.privacyMode);
+        showToast(state.privacyMode ? '🕶️ 防偷窺已開啟：照片自動霧化' : '👁️ 防偷窺已關閉：清晰顯示');
+        playHaptic([20]);
+      });
+    }
+
+    if (elements.btnSkipWeight) {
+      elements.btnSkipWeight.addEventListener('click', () => {
+        state.weightSkipped = !state.weightSkipped;
+        elements.btnSkipWeight.classList.toggle('active', state.weightSkipped);
+        elements.btnSkipWeight.textContent = state.weightSkipped ? '➕ 填寫體重' : '今日未秤重 (純拍體態)';
+        if (elements.skipWeightNotice) elements.skipWeightNotice.classList.toggle('hidden', !state.weightSkipped);
+        if (elements.weightInputGroup) elements.weightInputGroup.style.opacity = state.weightSkipped ? '0.4' : '1';
+        elements.weightInput.disabled = state.weightSkipped;
+        if (state.weightSkipped) {
+          elements.weightInput.value = '';
+        } else {
+          elements.weightInput.focus();
+        }
+        playHaptic([15]);
+      });
+    }
+
+    if (elements.btnExportDailyShowcase) {
+      elements.btnExportDailyShowcase.addEventListener('click', () => {
+        if (state.activeDayAlbumDate && state.activeDayAlbumRecords) {
+          generateDailyShowcase(state.activeDayAlbumDate, state.activeDayAlbumRecords);
+        }
+      });
+    }
+
   initNavigation();
   initSteppers();
   initTagChips();

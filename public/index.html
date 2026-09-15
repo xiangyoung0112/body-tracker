@@ -88,9 +88,13 @@
         <h1 id="headerTitle" class="header-title">記錄體態</h1>
       </div>
       <div class="header-right">
+        <button type="button" id="btnPrivacyToggle" class="icon-btn" title="切換防偷窺遮罩 (模糊體態照片)" style="font-size: 16px;">
+          <span id="privacyIcon">🕶️</span>
+        </button>
         <button type="button" id="btnOpenCalendar" class="streak-pill-btn" title="查看打卡紀錄月曆">
           <span class="streak-fire">🔥</span>
           <span id="streakCount">0</span> 天
+          <span id="photoStreakBadge" class="photo-streak-sub" title="體態拍照連續打卡">📸 <span id="photoStreakCount">0</span></span>
         </button>
         <button id="btnQuickScan" class="icon-btn" title="查看手機連線資訊">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -112,10 +116,16 @@
         <form id="recordForm" class="form-container">
 
           <div class="card weight-card">
-            <div class="card-label">今日體重 (KG)</div>
-            <div class="weight-input-group">
-              <input type="number" id="weightInput" step="0.1" min="20" max="300" placeholder="00.0" required autofocus>
+            <div class="card-label-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+              <div class="card-label" style="margin-bottom:0;">今日體重 (KG)</div>
+              <button type="button" id="btnSkipWeight" class="btn-skip-weight">跳過體重 (純拍體態)</button>
+            </div>
+            <div class="weight-input-group" id="weightInputGroup">
+              <input type="number" id="weightInput" step="0.1" min="20" max="300" placeholder="00.0" autofocus>
               <span class="weight-unit">kg</span>
+            </div>
+            <div id="skipWeightNotice" class="skip-weight-notice hidden">
+              <span>📸 今日未量體重 • 將僅記錄體態照片與身體圍度</span>
             </div>
 
             <div class="quick-steppers">
@@ -562,9 +572,10 @@
         </div>
 
         <div class="day-album-modal-actions">
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button type="button" id="btnDayAlbumSetBefore" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">設為 Before</button>
             <button type="button" id="btnDayAlbumSetAfter" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">設為 After</button>
+            <button type="button" id="btnExportDailyShowcase" class="btn-primary" style="font-size: 12px; padding: 6px 14px; background: linear-gradient(135deg, #06b6d4, #10b981); color: #020617; font-weight: 700; border: none; border-radius: 8px; cursor: pointer;">🖼️ 匯出三角度海報</button>
           </div>
           <button type="button" id="btnDayAlbumDeletePhoto" class="btn-danger" style="font-size: 12px; padding: 6px 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 8px; cursor: pointer;">刪除當前照片</button>
         </div>
@@ -615,6 +626,15 @@
         <video id="cameraLiveVideo" playsinline autoplay muted></video>
         <img id="ghostOverlayImg" class="ghost-overlay-img hidden" alt="前次體態疊影">
         <div class="camera-grid-lines"></div>
+        <svg id="cameraSilhouetteOverlay" class="camera-silhouette-svg hidden" viewBox="0 0 100 160" preserveAspectRatio="none">
+          <ellipse cx="50" cy="24" rx="12" ry="16" class="sil-head" />
+          <line x1="20" y1="45" x2="80" y2="45" class="sil-shoulder" />
+          <line x1="50" y1="8" x2="50" y2="152" class="sil-spine" />
+          <line x1="28" y1="62" x2="72" y2="62" class="sil-dash" />
+          <line x1="32" y1="80" x2="68" y2="80" class="sil-dash" />
+          <line x1="26" y1="96" x2="74" y2="96" class="sil-dash" />
+          <line x1="22" y1="148" x2="78" y2="148" class="sil-feet" />
+        </svg>
 
         <div id="cameraCountdownDisplay" class="countdown-overlay-number hidden">3</div>
         <div id="cameraFlashOverlay" class="camera-flash-layer hidden"></div>
@@ -625,6 +645,10 @@
           <div class="camera-top-actions">
             <button type="button" id="btnCameraFitToggle" class="camera-pill-btn active" title="切換鏡頭裁切/完整視野">
               📐 完整視野
+            </button>
+
+            <button type="button" id="btnCameraSilhouetteToggle" class="camera-pill-btn" title="切換標準人體定位框線">
+              👤 定位線: 關
             </button>
 
             <button type="button" id="btnCameraTimerToggle" class="camera-pill-btn">

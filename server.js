@@ -124,8 +124,12 @@ app.post('/api/records', upload.single('photo'), (req, res) => {
       }
     }
 
+    const weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
+      ? parseFloat(weight)
+      : null;
+
     const newRecord = recordDao.create({
-      weight: parseFloat(weight),
+      weight: weightVal,
       body_fat: body_fat ? parseFloat(body_fat) : null,
       waist_cm: waist_cm ? parseFloat(waist_cm) : null,
       hip_cm: hip_cm ? parseFloat(hip_cm) : null,
@@ -137,7 +141,7 @@ app.post('/api/records', upload.single('photo'), (req, res) => {
       photo_angle: photo_angle || 'front'
     });
 
-    console.log(`[新增紀錄] 體重: ${weight} kg, 相片: ${photoPath || '無'}, 日期: ${newRecord.record_date}`);
+    console.log(`[新增紀錄] 體重: ${weightVal !== null ? weightVal + ' kg' : '無紀錄'}, 相片: ${photoPath || '無'}, 日期: ${newRecord.record_date}`);
     res.json({ success: true, data: newRecord });
   } catch (err) {
     console.error('Error creating record:', err);

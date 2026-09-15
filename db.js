@@ -43,6 +43,36 @@ function initDb() {
   try { db.exec(`ALTER TABLE records ADD COLUMN hip_cm REAL;`); } catch (e) {}
   try { db.exec(`ALTER TABLE records ADD COLUMN chest_cm REAL;`); } catch (e) {}
 
+  // Check if weight column allows NULL in SQLite
+  try {
+    const tableInfo = db.prepare(`PRAGMA table_info(records)`).all();
+    const weightCol = tableInfo.find(c => c.name === 'weight');
+    if (weightCol && weightCol.notnull === 1) {
+      db.exec(`
+        CREATE TABLE records_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          weight REAL,
+          body_fat REAL,
+          waist_cm REAL,
+          hip_cm REAL,
+          chest_cm REAL,
+          record_date TEXT NOT NULL,
+          note TEXT,
+          tags TEXT,
+          photo_path TEXT,
+          photo_angle TEXT DEFAULT 'front',
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO records_new (id, weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_path, photo_angle, created_at)
+        SELECT id, weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_path, photo_angle, created_at FROM records;
+        DROP TABLE records;
+        ALTER TABLE records_new RENAME TO records;
+      `);
+    }
+  } catch (migErr) {
+    console.warn('SQLite migration warning:', migErr);
+  }
+
   // Initialize default settings if not already present
   const defaultSettings = [
     { key: 'target_weight', value: '65.0' },
@@ -105,8 +135,11 @@ const recordDao = {
       INSERT INTO records (weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_path, photo_angle, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
+      ? parseFloat(weight)
+      : null;
     const result = stmt.run(
-      parseFloat(weight),
+      weightVal,
       body_fat ? parseFloat(body_fat) : null,
       waist_cm ? parseFloat(waist_cm) : null,
       hip_cm ? parseFloat(hip_cm) : null,
@@ -150,17 +183,19 @@ const recordDao = {
     const countStmt = db.prepare(`SELECT COUNT(*) as count FROM records`);
     const { count } = countStmt.get();
 
-    // Latest record
+    // Latest record that has weight
     const latestStmt = db.prepare(`
       SELECT weight, body_fat, record_date FROM records
+      WHERE weight IS NOT NULL
       ORDER BY record_date DESC, id DESC
       LIMIT 1
     `);
     const latest = latestStmt.get() || null;
 
-    // First (earliest) record
+    // First (earliest) record that has weight
     const earliestStmt = db.prepare(`
       SELECT weight, body_fat, record_date FROM records
+      WHERE weight IS NOT NULL
       ORDER BY record_date ASC, id ASC
       LIMIT 1
     `);
@@ -169,6 +204,7 @@ const recordDao = {
     // Min and Max weight
     const minMaxStmt = db.prepare(`
       SELECT MIN(weight) as min_weight, MAX(weight) as max_weight FROM records
+      WHERE weight IS NOT NULL
     `);
     const { min_weight, max_weight } = minMaxStmt.get() || { min_weight: null, max_weight: null };
 
@@ -183,7 +219,9 @@ const recordDao = {
       max_weight: max_weight,
       target_weight: parseFloat(settings.target_weight || '65.0'),
       height_cm: parseFloat(settings.height_cm || '175.0'),
-      weight_change: (latest && earliest) ? parseFloat((latest.weight - earliest.weight).toFixed(1)) : 0
+      weight_change: (latest && earliest && latest.weight !== null && earliest.weight !== null)
+        ? parseFloat((latest.weight - earliest.weight).toFixed(1))
+        : 0
     };
   }
 };
