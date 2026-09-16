@@ -20,7 +20,7 @@ function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      weight REAL NOT NULL,
+      weight REAL,
       body_fat REAL,
       waist_cm REAL,
       hip_cm REAL,
@@ -175,6 +175,77 @@ const recordDao = {
     }
 
     return record;
+  },
+
+  // Update a record by ID
+  update(id, fields = {}) {
+    const existing = this.getById(id);
+    if (!existing) return null;
+
+    const weightVal = ('weight' in fields)
+      ? (fields.weight !== null && fields.weight !== undefined && fields.weight !== '' && !isNaN(Number(fields.weight)) ? parseFloat(fields.weight) : null)
+      : existing.weight;
+
+    const stmt = db.prepare(`
+      UPDATE records
+      SET weight = ?,
+          body_fat = CASE WHEN ? IS NOT NULL THEN ? ELSE body_fat END,
+          waist_cm = CASE WHEN ? IS NOT NULL THEN ? ELSE waist_cm END,
+          hip_cm = CASE WHEN ? IS NOT NULL THEN ? ELSE hip_cm END,
+          chest_cm = CASE WHEN ? IS NOT NULL THEN ? ELSE chest_cm END,
+          note = CASE WHEN ? IS NOT NULL THEN ? ELSE note END,
+          tags = CASE WHEN ? IS NOT NULL THEN ? ELSE tags END,
+          record_date = CASE WHEN ? IS NOT NULL THEN ? ELSE record_date END
+      WHERE id = ?
+    `);
+
+    const bf = ('body_fat' in fields) ? (fields.body_fat ? parseFloat(fields.body_fat) : null) : null;
+    const waist = ('waist_cm' in fields) ? (fields.waist_cm ? parseFloat(fields.waist_cm) : null) : null;
+    const hip = ('hip_cm' in fields) ? (fields.hip_cm ? parseFloat(fields.hip_cm) : null) : null;
+    const chest = ('chest_cm' in fields) ? (fields.chest_cm ? parseFloat(fields.chest_cm) : null) : null;
+    const note = ('note' in fields) ? fields.note : null;
+    const tags = ('tags' in fields) ? fields.tags : null;
+    const rDate = ('record_date' in fields) ? fields.record_date : null;
+
+    stmt.run(
+      weightVal,
+      bf, bf,
+      waist, waist,
+      hip, hip,
+      chest, chest,
+      note, note,
+      tags, tags,
+      rDate, rDate,
+      id
+    );
+
+    return this.getById(id);
+  },
+
+  // Update or set weight for all records on a given date (e.g. '2026-09-16')
+  updateWeightByDate(recordDate, weight) {
+    const dayKey = String(recordDate || '').substring(0, 10);
+    const weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
+      ? parseFloat(weight)
+      : null;
+
+    const recordsOnDay = db.prepare(`SELECT * FROM records WHERE substr(record_date, 1, 10) = ?`).all(dayKey);
+    if (recordsOnDay.length > 0) {
+      db.prepare(`
+        UPDATE records
+        SET weight = ?
+        WHERE substr(record_date, 1, 10) = ?
+      `).run(weightVal, dayKey);
+    } else {
+      // If no record on this day, create a new record
+      this.create({
+        weight: weightVal,
+        record_date: `${dayKey} 08:00:00`,
+        note: ''
+      });
+    }
+
+    return db.prepare(`SELECT * FROM records WHERE substr(record_date, 1, 10) = ? ORDER BY id DESC`).all(dayKey);
   },
 
   // Get statistics for dashboard

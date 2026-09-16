@@ -113,6 +113,11 @@
     <main class="app-content">
 
       <section id="tab-log" class="tab-pane active">
+        <div class="log-mode-tabs" id="logModeTabs">
+          <button type="button" class="log-mode-btn active" data-mode="all">🌟 完整記錄</button>
+          <button type="button" class="log-mode-btn" data-mode="photo-only">📸 純拍體態</button>
+          <button type="button" class="log-mode-btn" data-mode="weight-only">⚖️ 快速秤重</button>
+        </div>
         <form id="recordForm" class="form-container">
 
           <div class="card weight-card">
@@ -575,9 +580,48 @@
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button type="button" id="btnDayAlbumSetBefore" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">設為 Before</button>
             <button type="button" id="btnDayAlbumSetAfter" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;">設為 After</button>
+            <button type="button" id="btnAlbumEditWeight" class="btn-primary" style="font-size: 12px; padding: 6px 14px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-weight: 700; border-radius: 8px; cursor: pointer;">✏️ 補填/修改體重</button>
             <button type="button" id="btnExportDailyShowcase" class="btn-primary" style="font-size: 12px; padding: 6px 14px; background: linear-gradient(135deg, #06b6d4, #10b981); color: #020617; font-weight: 700; border: none; border-radius: 8px; cursor: pointer;">🖼️ 匯出三角度海報</button>
           </div>
           <button type="button" id="btnDayAlbumDeletePhoto" class="btn-danger" style="font-size: 12px; padding: 6px 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 8px; cursor: pointer;">刪除當前照片</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 事後修改/補填體重彈窗 -->
+    <div id="editWeightModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="modal-dialog edit-weight-dialog">
+        <button type="button" id="btnCloseEditWeightModal" class="btn-close-modal">✕</button>
+        <div class="modal-header-text" style="margin-bottom: 14px;">
+          <h3 class="modal-title" id="editWeightModalTitle" style="font-size: 18px; color: #fff; margin: 0;">✏️ 編輯體重數據</h3>
+          <p class="modal-subtitle" id="editWeightModalSub" style="font-size: 13px; color: var(--text-secondary); margin: 4px 0 0 0;">--</p>
+        </div>
+
+        <div class="edit-weight-modal-body">
+          <div class="edit-weight-current-hint" id="editWeightCurrentHint">目前紀錄：--</div>
+          
+          <div class="weight-input-group" style="margin: 16px 0 12px;">
+            <input type="number" id="modalWeightInput" step="0.1" min="20" max="300" placeholder="00.0">
+            <span class="weight-unit">kg</span>
+          </div>
+
+          <div class="quick-steppers" style="margin-bottom: 16px;">
+            <button type="button" class="step-btn modal-step-btn" data-step="-0.5">-0.5</button>
+            <button type="button" class="step-btn modal-step-btn" data-step="-0.1">-0.1</button>
+            <button type="button" class="step-btn modal-step-btn" data-step="+0.1">+0.1</button>
+            <button type="button" class="step-btn modal-step-btn" data-step="+0.5">+0.5</button>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 18px;">
+            <button type="button" id="btnModalClearWeight" class="btn-text-link" style="color: #ef4444; font-size: 13px; text-decoration: underline; background: none; border: none; cursor: pointer; padding: 0;">
+              🗑️ 設為未秤重 (僅保留體態照片)
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end;">
+          <button type="button" id="btnCancelEditWeight" class="btn-secondary" style="padding:10px 18px; border-radius: 8px;">取消</button>
+          <button type="button" id="btnSaveEditWeight" class="btn-primary-gradient" style="padding:10px 22px; border-radius: 8px;">💾 儲存修改</button>
         </div>
       </div>
     </div>

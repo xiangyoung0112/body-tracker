@@ -336,6 +336,68 @@ window.SupabaseService = (() => {
       return true;
     },
 
+    async updateRecord(id, updates = {}) {
+      if (!client) throw new Error('Supabase 尚未初始化');
+
+      const payload = { ...updates };
+      if ('weight' in payload) {
+        payload.weight = (payload.weight !== null && payload.weight !== undefined && payload.weight !== '' && !isNaN(Number(payload.weight)))
+          ? parseFloat(payload.weight)
+          : null;
+      }
+
+      const { data, error } = await client
+        .from('weight_records')
+        .update(payload)
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        console.error('Update record error:', error);
+        throw error;
+      }
+
+      const record = data && data[0];
+      if (record && record.photo_path) {
+        record.photo_url = await this.getSignedPhotoUrl(record.photo_path, 3600);
+      }
+      return record;
+    },
+
+    async updateWeightByDate(dateKey, weight) {
+      if (!client) throw new Error('Supabase 尚未初始化');
+
+      const dayStr = String(dateKey || '').substring(0, 10);
+      const weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
+        ? parseFloat(weight)
+        : null;
+
+      const records = await this.getAllRecords();
+      const dayRecords = records.filter(r => (r.record_date || '').substring(0, 10) === dayStr);
+
+      if (dayRecords.length > 0) {
+        const ids = dayRecords.map(r => r.id);
+        const { data, error } = await client
+          .from('weight_records')
+          .update({ weight: weightVal })
+          .in('id', ids)
+          .select();
+
+        if (error) {
+          console.error('Update weight by date error:', error);
+          throw error;
+        }
+        return data || [];
+      } else {
+        const newRec = await this.createRecord({
+          weight: weightVal,
+          record_date: `${dayStr}T08:00:00`,
+          note: ''
+        });
+        return [newRec];
+      }
+    },
+
     async getStats() {
       if (!client) {
         return {

@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraFitMode: 'contain',
     cameraSilhouetteEnabled: false,
     privacyMode: localStorage.getItem('fittrack_privacy_blur') === 'true',
+    currentLogMode: 'all',
+    editingWeightDate: null,
     weightSkipped: false,
     previewFitMode: 'contain',
     ghostEnabled: true,
@@ -191,6 +193,19 @@ document.addEventListener('DOMContentLoaded', () => {
     btnCameraSilhouetteToggle: document.getElementById('btnCameraSilhouetteToggle'),
     cameraSilhouetteOverlay: document.getElementById('cameraSilhouetteOverlay'),
     btnExportDailyShowcase: document.getElementById('btnExportDailyShowcase'),
+    btnAlbumEditWeight: document.getElementById('btnAlbumEditWeight'),
+    logModeTabs: document.getElementById('logModeTabs'),
+    editWeightModal: document.getElementById('editWeightModal'),
+    btnCloseEditWeightModal: document.getElementById('btnCloseEditWeightModal'),
+    editWeightModalTitle: document.getElementById('editWeightModalTitle'),
+    editWeightModalSub: document.getElementById('editWeightModalSub'),
+    editWeightCurrentHint: document.getElementById('editWeightCurrentHint'),
+    modalWeightInput: document.getElementById('modalWeightInput'),
+    btnModalClearWeight: document.getElementById('btnModalClearWeight'),
+    btnCancelEditWeight: document.getElementById('btnCancelEditWeight'),
+    btnSaveEditWeight: document.getElementById('btnSaveEditWeight'),
+    weightCard: document.querySelector('.card.weight-card'),
+    photoCard: document.querySelector('.card.photo-card'),
     dayAlbumModal: document.getElementById('dayAlbumModal'),
     btnCloseDayAlbumModal: document.getElementById('btnCloseDayAlbumModal'),
     dayAlbumModalTitle: document.getElementById('dayAlbumModalTitle'),
@@ -433,6 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       elements.authScreen.classList.add('hidden');
       elements.appContainer.classList.remove('hidden');
+      await loadAllData();
       return;
     }
 
@@ -443,6 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (elements.currentUserEmail) {
         elements.currentUserEmail.textContent = session.user.email;
       }
+      await loadAllData();
     } else {
       elements.appContainer.classList.add('hidden');
       elements.authScreen.classList.remove('hidden');
@@ -1419,7 +1436,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function getRecordPhotoUrl(record) {
     if (!record) return null;
     if (record.photo_url) return record.photo_url;
-    if (record.photo_path && !record.photo_path.startsWith('photo-')) return `/uploads/${record.photo_path}`;
+    if (record.photo_path) return `/uploads/${record.photo_path}`;
     return null;
   }
 
@@ -1469,8 +1486,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const weekStr = weekDays[dObj.getDay()] || '';
       const formattedDate = `${dateKey} (${weekStr})`;
 
-      const latestRec = dayRecords[0];
-      const dayWeight = latestRec ? Number(latestRec.weight).toFixed(1) : '--';
+      const recWithWeight = dayRecords.find(r => r.weight !== null && r.weight !== undefined && !isNaN(Number(r.weight)));
+      const dayWeight = recWithWeight ? Number(recWithWeight.weight).toFixed(1) : null;
       const dayFat = dayRecords.find(r => r.body_fat !== null && r.body_fat !== undefined)?.body_fat;
       const dayWaist = dayRecords.find(r => r.waist_cm)?.waist_cm;
       const dayHip = dayRecords.find(r => r.hip_cm)?.hip_cm;
@@ -1519,7 +1536,10 @@ document.addEventListener('DOMContentLoaded', () => {
               ${photoChip}
             </div>
             <div class="timeline-album-weight-wrap">
-              <div class="timeline-album-weight">${dayWeight} <small style="font-size:13px;color:#94a3b8">kg</small></div>
+              ${dayWeight !== null
+                ? `<button type="button" class="btn-edit-weight-pill" data-date="${dateKey}" title="點擊修改體重">✏️ ${dayWeight} kg</button>`
+                : `<button type="button" class="btn-edit-weight-pill unweighed" data-date="${dateKey}" title="點擊補填體重">✏️ 補填體重</button>`
+              }
               ${dayFat ? `<div class="timeline-album-fat">體脂 ${dayFat}%</div>` : ''}
             </div>
           </div>
@@ -1543,6 +1563,11 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.timelineContainer.querySelectorAll('.timeline-album-card').forEach(card => {
       card.addEventListener('click', (e) => {
         const dateKey = card.dataset.date;
+        if (e.target.closest('.btn-edit-weight-pill')) {
+          e.stopPropagation();
+          openEditWeightModal(dateKey);
+          return;
+        }
         const targetThumb = e.target.closest('.timeline-album-thumb');
         const initialIdx = targetThumb ? parseInt(targetThumb.dataset.photoIndex, 10) || 0 : 0;
         const dayGroup = dayGroups.find(g => g[0] === dateKey);
@@ -1571,9 +1596,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const weekStr = weekDays[dObj.getDay()] || '';
     elements.dayAlbumModalTitle.textContent = `📅 ${dateKey} (${weekStr}) 體態相簿`;
 
-    const latestRec = dayRecords[0];
-    const dayWeight = latestRec ? Number(latestRec.weight).toFixed(1) : '--';
-    elements.dayAlbumModalSub.textContent = `共 ${dayPhotos.length} 張照片 • 最新體重 ${dayWeight} kg`;
+    const recWithWeight = dayRecords.find(r => r.weight !== null && r.weight !== undefined && !isNaN(Number(r.weight)));
+    const dayWeight = recWithWeight ? Number(recWithWeight.weight).toFixed(1) : null;
+    elements.dayAlbumModalSub.textContent = `共 ${dayPhotos.length} 張照片 • ${dayWeight !== null ? '體重 ' + dayWeight + ' kg' : '未秤重 (純拍體態)'}`;
 
     const dayFat = dayRecords.find(r => r.body_fat !== null && r.body_fat !== undefined)?.body_fat;
     const dayWaist = dayRecords.find(r => r.waist_cm)?.waist_cm;
@@ -1581,9 +1606,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const dayChest = dayRecords.find(r => r.chest_cm)?.chest_cm;
 
     elements.dayAlbumStatsRow.innerHTML = `
-      <div class="day-album-stat-box">
-        <div class="day-album-stat-label">體重</div>
-        <div class="day-album-stat-val">${dayWeight} kg</div>
+      <div class="day-album-stat-box clickable" id="dayAlbumWeightBox" title="點擊修改/補填體重">
+        <div class="day-album-stat-label">體重 ✏️</div>
+        <div class="day-album-stat-val">${dayWeight !== null ? dayWeight + ' kg' : '補填體重'}</div>
       </div>
       ${dayFat ? `
         <div class="day-album-stat-box">
@@ -1610,6 +1635,13 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       ` : ''}
     `;
+
+    const wBox = elements.dayAlbumStatsRow.querySelector('#dayAlbumWeightBox');
+    if (wBox) {
+      wBox.addEventListener('click', () => {
+        openEditWeightModal(dateKey);
+      });
+    }
 
     if (dayPhotos.length > 0) {
       elements.dayAlbumNavTabs.classList.remove('hidden');
@@ -2419,7 +2451,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return `
         <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.04); border-radius:10px; padding:8px 12px; margin-top:6px;">
           <div>
-            <div style="font-size:16px; font-weight:800; color:#10b981;">${Number(r.weight).toFixed(1)} <small style="font-size:12px; color:#94a3b8;">kg</small></div>
+            ${(r.weight !== null && r.weight !== undefined && !isNaN(Number(r.weight)))
+              ? `<div style="font-size:16px; font-weight:800; color:#10b981;">${Number(r.weight).toFixed(1)} <small style="font-size:12px; color:#94a3b8;">kg</small></div>`
+              : `<div style="font-size:14px; font-weight:700; color:#f59e0b;">未秤重 (純拍體態)</div>`
+            }
             ${r.body_fat ? `<div style="font-size:12px; color:#38bdf8;">體脂: ${r.body_fat}%</div>` : ''}
             ${tapeInfo ? `<div style="font-size:12px; color:#f59e0b;">${tapeInfo}</div>` : ''}
             ${r.note ? `<div style="font-size:12px; color:#cbd5e1; margin-top:2px;">${escapeHtml(r.note)}</div>` : ''}
@@ -2430,9 +2465,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
 
     elements.calendarSelectedDayInfo.innerHTML = `
-      <div style="font-weight:700; color:#fff; font-size:14px; margin-bottom:4px;">📅 ${dateKey} (共 ${records.length} 筆)</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <div style="font-weight:700; color:#fff; font-size:14px;">📅 ${dateKey} (共 ${records.length} 筆)</div>
+        <button type="button" class="btn-cal-edit-weight" style="background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.3); color:#38bdf8; font-size:11px; font-weight:700; padding:3px 8px; border-radius:6px; cursor:pointer;">✏️ 修改體重</button>
+      </div>
       ${cardsHtml}
     `;
+    const calEditBtn = elements.calendarSelectedDayInfo.querySelector('.btn-cal-edit-weight');
+    if (calEditBtn) {
+      calEditBtn.addEventListener('click', () => {
+        openEditWeightModal(dateKey);
+      });
+    }
     elements.calendarSelectedDayInfo.classList.remove('hidden');
 
     elements.calendarSelectedDayInfo.querySelectorAll('.cal-thumb-wrap').forEach(wrap => {
@@ -2746,6 +2790,204 @@ elements.photoModal.addEventListener('click', (e) => {
       });
     }
 
+
+  function openEditWeightModal(dateKey) {
+    state.editingWeightDate = dateKey;
+    const dayRecords = state.allRecords.filter(r => (r.record_date || '').substring(0, 10) === dateKey);
+    const recWithWeight = dayRecords.find(r => r.weight !== null && r.weight !== undefined && !isNaN(Number(r.weight)));
+    const curWeight = recWithWeight ? Number(recWithWeight.weight).toFixed(1) : null;
+
+    const dObj = new Date(dateKey + 'T00:00:00');
+    const weekDays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+    const weekStr = weekDays[dObj.getDay()] || '';
+
+    if (elements.editWeightModalTitle) elements.editWeightModalTitle.textContent = '✏️ 編輯體重數據';
+    if (elements.editWeightModalSub) elements.editWeightModalSub.textContent = `📅 ${dateKey} (${weekStr})`;
+    if (elements.editWeightCurrentHint) {
+      elements.editWeightCurrentHint.innerHTML = curWeight !== null
+        ? `目前紀錄體重：<strong style="color:#38bdf8; font-size:15px;">${curWeight} kg</strong>`
+        : `<span style="color:#f59e0b; font-weight:600;">⚠️ 目前未記錄體重（純拍體態打卡）</span>`;
+    }
+
+    if (elements.modalWeightInput) {
+      elements.modalWeightInput.value = curWeight !== null ? curWeight : '';
+    }
+
+    if (elements.editWeightModal) {
+      elements.editWeightModal.classList.remove('hidden');
+      setTimeout(() => elements.modalWeightInput && elements.modalWeightInput.focus(), 100);
+    }
+    playHaptic([15]);
+  }
+
+  function closeEditWeightModal() {
+    state.editingWeightDate = null;
+    if (elements.editWeightModal) elements.editWeightModal.classList.add('hidden');
+  }
+
+  function initEditWeightModal() {
+    if (elements.btnCloseEditWeightModal) {
+      elements.btnCloseEditWeightModal.addEventListener('click', closeEditWeightModal);
+    }
+    if (elements.btnCancelEditWeight) {
+      elements.btnCancelEditWeight.addEventListener('click', closeEditWeightModal);
+    }
+    if (elements.editWeightModal) {
+      elements.editWeightModal.addEventListener('click', (e) => {
+        if (e.target === elements.editWeightModal) closeEditWeightModal();
+      });
+    }
+
+    document.querySelectorAll('.modal-step-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const step = parseFloat(btn.dataset.step);
+        const current = parseFloat(elements.modalWeightInput.value) || 60.0;
+        elements.modalWeightInput.value = (current + step).toFixed(1);
+        playTone(600, 0.03);
+        playHaptic([10]);
+      });
+    });
+
+    if (elements.btnModalClearWeight) {
+      elements.btnModalClearWeight.addEventListener('click', () => {
+        elements.modalWeightInput.value = '';
+        showToast('已清空體重，儲存後將設為「未秤重 (純拍體態)」');
+        playTone(440, 0.05);
+      });
+    }
+
+    if (elements.btnSaveEditWeight) {
+      elements.btnSaveEditWeight.addEventListener('click', handleSaveDateWeight);
+    }
+
+    if (elements.btnAlbumEditWeight) {
+      elements.btnAlbumEditWeight.addEventListener('click', () => {
+        if (state.activeDayAlbumDate) {
+          openEditWeightModal(state.activeDayAlbumDate);
+        }
+      });
+    }
+  }
+
+  async function handleSaveDateWeight() {
+    const dateKey = state.editingWeightDate;
+    if (!dateKey) return;
+
+    const rawVal = elements.modalWeightInput.value.trim();
+    let newWeight = null;
+    if (rawVal !== '') {
+      const num = parseFloat(rawVal);
+      if (isNaN(num) || num < 20 || num > 300) {
+        showToast('請輸入有效的體重數值 (20 ~ 300 kg)', true);
+        elements.modalWeightInput.focus();
+        return;
+      }
+      newWeight = parseFloat(num.toFixed(1));
+    }
+
+    elements.btnSaveEditWeight.disabled = true;
+    try {
+      if (window.SupabaseService && window.SupabaseService.isConfigured()) {
+        await window.SupabaseService.updateWeightByDate(dateKey, newWeight);
+      } else {
+        const res = await fetch(`/api/records/by-date/${dateKey}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ weight: newWeight })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || '更新失敗');
+        }
+      }
+
+      state.allRecords.forEach(r => {
+        if ((r.record_date || '').substring(0, 10) === dateKey) {
+          r.weight = newWeight;
+        }
+      });
+
+      const existing = state.allRecords.some(r => (r.record_date || '').substring(0, 10) === dateKey);
+      if (!existing) {
+        await loadInitialData();
+      } else {
+        updateStatsView();
+        renderChart();
+        renderTimeline();
+        renderMonthlyCalendar();
+        updateStreakDisplay();
+      }
+
+      if (state.activeDayAlbumDate === dateKey && elements.dayAlbumModal && !elements.dayAlbumModal.classList.contains('hidden')) {
+        const updatedDayRecords = state.allRecords.filter(r => (r.record_date || '').substring(0, 10) === dateKey);
+        openDayAlbumModal(dateKey, updatedDayRecords, state.activeDayAlbumIndex);
+      }
+
+      closeEditWeightModal();
+      showToast(newWeight !== null ? `🎉 ${dateKey} 體重已成功更新為 ${newWeight} kg！` : `✨ ${dateKey} 已設為未秤重（純拍體態）`);
+      playTone(1046, 0.12);
+      playHaptic([30, 20, 40]);
+
+    } catch (err) {
+      console.error('Update weight error:', err);
+      showToast('體重修改失敗：' + err.message, true);
+    } finally {
+      elements.btnSaveEditWeight.disabled = false;
+    }
+  }
+
+  function initLogModeTabs() {
+    if (!elements.logModeTabs) return;
+
+    elements.logModeTabs.querySelectorAll('.log-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        state.currentLogMode = mode;
+
+        elements.logModeTabs.querySelectorAll('.log-mode-btn').forEach(b => {
+          b.classList.toggle('active', b === btn);
+        });
+
+        if (mode === 'photo-only') {
+          state.weightSkipped = true;
+          if (elements.weightCard) elements.weightCard.classList.add('hidden');
+          if (elements.photoCard) elements.photoCard.classList.remove('hidden');
+          if (elements.btnSkipWeight) elements.btnSkipWeight.classList.add('active');
+          if (elements.weightInput) {
+            elements.weightInput.value = '';
+            elements.weightInput.disabled = true;
+          }
+          showToast('📸 純拍體態模式：拍照儲存免量體重');
+        } else if (mode === 'weight-only') {
+          state.weightSkipped = false;
+          if (elements.weightCard) elements.weightCard.classList.remove('hidden');
+          if (elements.photoCard) elements.photoCard.classList.add('hidden');
+          if (elements.btnSkipWeight) elements.btnSkipWeight.classList.remove('active');
+          if (elements.weightInput) {
+            elements.weightInput.disabled = false;
+            elements.weightInput.focus();
+          }
+          if (elements.skipWeightNotice) elements.skipWeightNotice.classList.add('hidden');
+          if (elements.weightInputGroup) elements.weightInputGroup.style.opacity = '1';
+          showToast('⚖️ 純秤重模式：快速記錄數字');
+        } else {
+          state.weightSkipped = false;
+          if (elements.weightCard) elements.weightCard.classList.remove('hidden');
+          if (elements.photoCard) elements.photoCard.classList.remove('hidden');
+          if (elements.btnSkipWeight) elements.btnSkipWeight.classList.remove('active');
+          if (elements.weightInput) elements.weightInput.disabled = false;
+          if (elements.skipWeightNotice) elements.skipWeightNotice.classList.add('hidden');
+          if (elements.weightInputGroup) elements.weightInputGroup.style.opacity = '1';
+        }
+
+        playTone(720, 0.03);
+        playHaptic([10]);
+      });
+    });
+  }
+
+  initLogModeTabs();
+  initEditWeightModal();
   initNavigation();
   initSteppers();
   initTagChips();

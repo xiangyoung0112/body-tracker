@@ -164,6 +164,34 @@ app.delete('/api/records/:id', (req, res) => {
   }
 });
 
+// 4.1 Update a single record
+app.patch('/api/records/:id', (req, res) => {
+  try {
+    const updated = recordDao.update(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: '記錄不存在或已被刪除' });
+    }
+    console.log(`[更新紀錄] ID: ${req.params.id}`);
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('Error updating record:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4.2 Update weight for all records on a specific date (or create day record)
+app.patch('/api/records/by-date/:date', (req, res) => {
+  try {
+    const { weight } = req.body;
+    const records = recordDao.updateWeightByDate(req.params.date, weight);
+    console.log(`[更新日期體重] 日期: ${req.params.date}, 體重: ${weight}`);
+    res.json({ success: true, data: records });
+  } catch (err) {
+    console.error('Error updating weight by date:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 5. Get statistics
 app.get('/api/stats', (req, res) => {
   try {
