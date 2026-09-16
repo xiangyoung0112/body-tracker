@@ -362,6 +362,14 @@
           <div class="card-label">⚖️ 體態前後對比 (Before & After)</div>
           <p class="compare-desc">挑選兩個日期的體態照片，直觀比對肌肉線條與身形變化。</p>
           
+          <div class="compare-angle-selector" style="margin: 12px 0 16px;">
+            <div class="log-mode-tabs" id="compareAngleTabs">
+              <button type="button" class="log-mode-btn active" data-compare-angle="front">🧍 正面對比</button>
+              <button type="button" class="log-mode-btn" data-compare-angle="side">🚶 側面對比</button>
+              <button type="button" class="log-mode-btn" data-compare-angle="back">🚶‍♂️ 背面對比</button>
+            </div>
+          </div>
+
           <div class="compare-pickers">
             <div class="picker-group">
               <label for="compareBeforeSelect">⬅️ 基準日 (Before)</label>
@@ -503,6 +511,11 @@
           <div style="display: flex; gap: 8px; margin-top: 12px;">
             <button type="button" id="btnSaveSupabase" class="btn-secondary" style="flex: 2; margin-top:0; background: var(--gradient-primary); color: #0b0f19; font-weight:700">儲存並連線雲端</button>
             <button type="button" id="btnClearSupabase" class="btn-secondary" style="flex: 1; margin-top:0; color: #ef4444">清除連線</button>
+          </div>
+          <div class="camera-finish-wrap" style="margin-top: 10px; text-align: center;">
+            <button type="button" id="btnFinishCameraSession" class="btn-camera-finish">
+              ✓ 拍好完成，一次回表單儲存 (<span id="cameraDoneCount">0</span>/3)
+            </button>
           </div>
         </div>
 
@@ -715,7 +728,19 @@
         </div>
 
         <div class="camera-bottom-bar">
-          <div class="shutter-helper-tip">提示：已開啟全景無裁切拍攝 • 架好手機自動倒數</div>
+          <div class="camera-angle-bar" id="cameraAngleBar">
+            <button type="button" class="camera-angle-btn active" data-angle="front">
+              🧍 正面 <span class="camera-angle-check hidden" id="camCheckFront">✓</span>
+            </button>
+            <button type="button" class="camera-angle-btn" data-angle="side">
+              🚶 側面 <span class="camera-angle-check hidden" id="camCheckSide">✓</span>
+            </button>
+            <button type="button" class="camera-angle-btn" data-angle="back">
+              🚶‍♂️ 背面 <span class="camera-angle-check hidden" id="camCheckBack">✓</span>
+            </button>
+          </div>
+
+          <div class="shutter-helper-tip" id="cameraFlowHint">📸 準備拍攝正面照 • 架好手機自動倒數</div>
           <div class="camera-shutter-wrap">
             <button type="button" id="btnCameraShutter" class="camera-shutter-btn">
               <div class="shutter-inner">

@@ -284,6 +284,38 @@ window.SupabaseService = (() => {
         ? parseFloat(weight)
         : null;
 
+      if (photo_path) {
+        try {
+          const dayStr = (record_date || new Date().toISOString()).substring(0, 10);
+          const { data: existingRecs } = await client
+            .from('weight_records')
+            .select('*')
+            .gte('record_date', dayStr + 'T00:00:00')
+            .lte('record_date', dayStr + 'T23:59:59')
+            .eq('photo_angle', photo_angle || 'front');
+
+          if (existingRecs && existingRecs.length > 0) {
+            const old = existingRecs[0];
+            if (old.photo_path) {
+              await this.deletePhoto(old.photo_path);
+            }
+            return await this.updateRecord(old.id, {
+              photo_path,
+              photo_angle: photo_angle || 'front',
+              weight: weightVal !== null ? weightVal : old.weight,
+              body_fat: body_fat ? parseFloat(body_fat) : old.body_fat,
+              waist_cm: waist_cm ? parseFloat(waist_cm) : old.waist_cm,
+              hip_cm: hip_cm ? parseFloat(hip_cm) : old.hip_cm,
+              chest_cm: chest_cm ? parseFloat(chest_cm) : old.chest_cm,
+              note: note !== undefined ? note : old.note,
+              tags: tags !== undefined ? tags : old.tags
+            });
+          }
+        } catch (repErr) {
+          console.warn('Auto-replace check warning:', repErr);
+        }
+      }
+
       const payload = {
         weight: weightVal,
         body_fat: body_fat ? parseFloat(body_fat) : null,

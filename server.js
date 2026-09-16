@@ -102,24 +102,44 @@ app.post('/api/records', upload.single('photo'), (req, res) => {
   try {
     const { weight, body_fat, waist_cm, hip_cm, chest_cm, record_date, note, tags, photo_angle } = req.body;
 
-    if (!weight || isNaN(parseFloat(weight))) {
-      return res.status(400).json({ success: false, error: '請輸入有效的體重數值' });
-    }
-
+    const hasWeight = weight !== null && weight !== undefined && weight !== '' && !isNaN(parseFloat(weight));
     const photoPath = req.file ? req.file.filename : null;
+
+    if (!hasWeight && !photoPath) {
+      return res.status(400).json({ success: false, error: '請至少輸入體重數值或上傳照片' });
+    }
 
     if (photoPath) {
       const dayPhotos = recordDao.getPhotosByDay(record_date || new Date().toISOString());
       const angle = photo_angle || 'front';
-      const limitReached = dayPhotos.length >= 3;
-      const angleExists = dayPhotos.some(record => (record.photo_angle || 'front') === angle);
-      if (limitReached || angleExists) {
-        try { fs.unlinkSync(path.join(uploadsDir, photoPath)); } catch (cleanupError) { console.warn('Failed to clean rejected upload:', cleanupError); }
+      const existingSameAngle = dayPhotos.find(record => (record.photo_angle || 'front') === angle);
+
+      if (existingSameAngle) {
+        const weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
+          ? parseFloat(weight)
+          : existingSameAngle.weight;
+
+        const updated = recordDao.update(existingSameAngle.id, {
+          photo_path: photoPath,
+          photo_angle: angle,
+          weight: weightVal,
+          body_fat: body_fat !== undefined ? (body_fat ? parseFloat(body_fat) : null) : undefined,
+          waist_cm: waist_cm !== undefined ? (waist_cm ? parseFloat(waist_cm) : null) : undefined,
+          hip_cm: hip_cm !== undefined ? (hip_cm ? parseFloat(hip_cm) : null) : undefined,
+          chest_cm: chest_cm !== undefined ? (chest_cm ? parseFloat(chest_cm) : null) : undefined,
+          note: note !== undefined ? note : undefined,
+          tags: tags !== undefined ? tags : undefined
+        });
+
+        console.log(`[替換紀錄] ID: ${updated.id}, 角度: ${angle}, 相片: ${photoPath}`);
+        return res.json({ success: true, data: updated });
+      }
+
+      if (dayPhotos.length >= 3) {
+        try { fs.unlinkSync(path.join(uploadsDir, photoPath)); } catch (cleanupError) {}
         return res.status(409).json({
           success: false,
-          error: limitReached
-            ? '每天的體態相簿最多 3 張，請先刪除舊照片再替換'
-            : `當天已有${angle === 'front' ? '正面' : angle === 'side' ? '側面' : '背面'}照片，請先刪除舊照片再替換`
+          error: '每天的體態相簿最多 3 張照片 (正面、側面、背面)'
         });
       }
     }

@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     privacyMode: localStorage.getItem('fittrack_privacy_blur') === 'true',
     currentLogMode: 'all',
     editingWeightDate: null,
+    compareAngle: 'front',
     weightSkipped: false,
     previewFitMode: 'contain',
     ghostEnabled: true,
@@ -206,6 +207,14 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSaveEditWeight: document.getElementById('btnSaveEditWeight'),
     weightCard: document.querySelector('.card.weight-card'),
     photoCard: document.querySelector('.card.photo-card'),
+    cameraAngleBar: document.getElementById('cameraAngleBar'),
+    cameraFlowHint: document.getElementById('cameraFlowHint'),
+    btnFinishCameraSession: document.getElementById('btnFinishCameraSession'),
+    cameraDoneCount: document.getElementById('cameraDoneCount'),
+    camCheckFront: document.getElementById('camCheckFront'),
+    camCheckSide: document.getElementById('camCheckSide'),
+    camCheckBack: document.getElementById('camCheckBack'),
+    compareAngleTabs: document.getElementById('compareAngleTabs'),
     dayAlbumModal: document.getElementById('dayAlbumModal'),
     btnCloseDayAlbumModal: document.getElementById('btnCloseDayAlbumModal'),
     dayAlbumModalTitle: document.getElementById('dayAlbumModalTitle'),
@@ -686,6 +695,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+
+  function updateCameraAngleState() {
+    if (!elements.cameraAngleBar) return;
+    const curAngle = state.selectedPhotoAngle || 'front';
+
+    elements.cameraAngleBar.querySelectorAll('.camera-angle-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.angle === curAngle);
+    });
+
+    if (elements.camCheckFront) elements.camCheckFront.classList.toggle('hidden', !state.selectedPhotos.front);
+    if (elements.camCheckSide) elements.camCheckSide.classList.toggle('hidden', !state.selectedPhotos.side);
+    if (elements.camCheckBack) elements.camCheckBack.classList.toggle('hidden', !state.selectedPhotos.back);
+
+    const doneCount = photoAngleOrder.filter(a => state.selectedPhotos[a]).length;
+    if (elements.cameraDoneCount) elements.cameraDoneCount.textContent = doneCount;
+
+    if (elements.btnFinishCameraSession) {
+      elements.btnFinishCameraSession.classList.toggle('hidden', doneCount === 0);
+    }
+  }
+
   function initCountdownCamera() {
     if (elements.btnCloseCountdownCamera) {
       elements.btnCloseCountdownCamera.addEventListener('click', closeCountdownCamera);
@@ -768,8 +798,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: state.cameraFacing,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: 3840, min: 1920 },
+          height: { ideal: 2160, min: 1080 }
         },
         audio: false
       });
@@ -788,6 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.cameraLiveVideo.style.objectFit = state.cameraFitMode;
       if (elements.ghostOverlayImg) elements.ghostOverlayImg.style.objectFit = state.cameraFitMode;
       elements.countdownCameraModal.classList.remove('hidden');
+      updateCameraAngleState();
       playHaptic([25]);
 
     } catch (err) {
@@ -890,7 +921,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const vH = (video && video.videoHeight) ? video.videoHeight : 720;
     const canvas = document.createElement('canvas');
     let w = vW, h = vH;
-    const maxDim = 1600;
+    const maxDim = 3840;
     if (w > maxDim || h > maxDim) {
       if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
       else { w = Math.round((w * maxDim) / h); h = maxDim; }
@@ -908,19 +939,41 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.toBlob((blob) => {
       if (!blob) {
         showToast('拍照失敗，請重試', true);
-        closeCountdownCamera();
         return;
       }
+
+      const curAngle = state.selectedPhotoAngle || 'front';
+      state.selectedPhotos[curAngle] = blob;
       state.selectedPhotoBlob = blob;
-      elements.photoPreviewImg.src = URL.createObjectURL(blob);
-      elements.photoPlaceholder.classList.add('hidden');
-      elements.photoPreviewWrapper.classList.remove('hidden');
-      closeCountdownCamera();
-      showToast('📸 讀秒拍攝完成！相片不存入手機相簿');
-    }, 'image/jpeg', 0.88);
+
+      selectPhotoAngle(curAngle);
+      updateCameraAngleState();
+
+      const nextAngleMap = { front: 'side', side: 'back', back: null };
+      const nextAngle = nextAngleMap[curAngle];
+
+      if (nextAngle && !state.selectedPhotos[nextAngle]) {
+        selectPhotoAngle(nextAngle);
+        updateCameraAngleState();
+        showToast(`📸 ${photoAngleLabels[curAngle]}拍好！已切換至 ${photoAngleLabels[nextAngle]}`);
+        if (elements.cameraFlowHint) {
+          elements.cameraFlowHint.textContent = `✅ ${photoAngleLabels[curAngle]}已拍好！請轉向${photoAngleLabels[nextAngle]}繼續拍 ➔`;
+        }
+      } else {
+        const doneCount = photoAngleOrder.filter(a => state.selectedPhotos[a]).length;
+        if (doneCount === 3) {
+          showToast('🎉 三角度全部拍完！請點擊「完成」回表單儲存');
+          if (elements.cameraFlowHint) {
+            elements.cameraFlowHint.textContent = '🎉 三角度已全數拍完！點擊「完成」即可一次儲存 ➔';
+          }
+        } else {
+          showToast(`📸 ${photoAngleLabels[curAngle]}已拍好！`);
+        }
+      }
+    }, 'image/jpeg', 0.93);
   }
 
-  function compressImage(file, maxDimension = 1600, quality = 0.85) {
+  function compressImage(file, maxDimension = 3840, quality = 0.92) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -1015,49 +1068,88 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.btnSubmitRecord.disabled = true;
 
       try {
-        if (window.SupabaseService && window.SupabaseService.isConfigured()) {
-          let photoPath = null;
+        if (pendingPhotos.length > 0) {
+          showToast(`正在儲存 ${pendingPhotos.length} 個角度的體態相簿...`);
 
-          if (state.selectedPhotoBlob) {
-            showToast('正在加密上傳至私人保險箱...');
-            const uploadResult = await window.SupabaseService.uploadPhoto(state.selectedPhotoBlob);
-            photoPath = uploadResult.path;
+          if (window.SupabaseService && window.SupabaseService.isConfigured()) {
+            for (let i = 0; i < pendingPhotos.length; i++) {
+              const { angle, blob } = pendingPhotos[i];
+              showToast(`正在上傳 ${photoAngleLabels[angle]}照片...`);
+              const uploadResult = await window.SupabaseService.uploadPhoto(blob);
+              await window.SupabaseService.createRecord({
+                weight: weight,
+                body_fat: bodyFat,
+                waist_cm: waist,
+                hip_cm: hip,
+                chest_cm: chest,
+                record_date: recordDate,
+                note: i === 0 ? note : '',
+                tags: tags,
+                photo_path: uploadResult.path,
+                photo_angle: angle
+              });
+            }
+            showToast(`🎉 三角度體態相簿 (共 ${pendingPhotos.length} 張) 已一次性存入私人保險箱！`);
+          } else {
+            for (let i = 0; i < pendingPhotos.length; i++) {
+              const { angle, blob } = pendingPhotos[i];
+              const formData = new FormData();
+              if (weight !== null) formData.append('weight', weight);
+              if (bodyFat !== null) formData.append('body_fat', bodyFat);
+              if (waist !== null) formData.append('waist_cm', waist);
+              if (hip !== null) formData.append('hip_cm', hip);
+              if (chest !== null) formData.append('chest_cm', chest);
+              formData.append('record_date', recordDate);
+              formData.append('note', i === 0 ? note : '');
+              formData.append('tags', tags);
+              formData.append('photo_angle', angle);
+              formData.append('photo', blob, `photo-${angle}-${Date.now()}.jpg`);
+
+              const res = await fetch('/api/records', { method: 'POST', body: formData });
+              const data = await res.json();
+              if (!data.success) throw new Error(data.error || `角度 ${angle} 儲存失敗`);
+            }
+            showToast(`🎉 三角度體態相簿 (共 ${pendingPhotos.length} 張) 已一次性成功儲存！`);
           }
 
-          await window.SupabaseService.createRecord({
-            weight: weight,
-            body_fat: bodyFat,
-            waist_cm: waist,
-            hip_cm: hip,
-            chest_cm: chest,
-            record_date: recordDate,
-            note: note,
-            tags: tags,
-            photo_path: photoPath,
-            photo_angle: state.selectedPhotoAngle
-          });
+          // Reset all selected photos
+          state.selectedPhotos = { front: null, side: null, back: null };
+          state.selectedPhotoBlob = null;
+          selectPhotoAngle('front');
 
-          showToast('🎉 私人記錄已加密儲存！');
         } else {
-          const formData = new FormData();
-          formData.append('weight', weight);
-          if (bodyFat !== null) formData.append('body_fat', bodyFat);
-          if (waist !== null) formData.append('waist_cm', waist);
-          if (hip !== null) formData.append('hip_cm', hip);
-          if (chest !== null) formData.append('chest_cm', chest);
-          formData.append('record_date', recordDate);
-          formData.append('note', note);
-          formData.append('tags', tags);
-          formData.append('photo_angle', state.selectedPhotoAngle);
+          // Pure weight/tape record without photo
+          if (window.SupabaseService && window.SupabaseService.isConfigured()) {
+            await window.SupabaseService.createRecord({
+              weight: weight,
+              body_fat: bodyFat,
+              waist_cm: waist,
+              hip_cm: hip,
+              chest_cm: chest,
+              record_date: recordDate,
+              note: note,
+              tags: tags,
+              photo_path: null,
+              photo_angle: 'front'
+            });
+            showToast('🎉 私人紀錄已儲存！');
+          } else {
+            const formData = new FormData();
+            formData.append('weight', weight);
+            if (bodyFat !== null) formData.append('body_fat', bodyFat);
+            if (waist !== null) formData.append('waist_cm', waist);
+            if (hip !== null) formData.append('hip_cm', hip);
+            if (chest !== null) formData.append('chest_cm', chest);
+            formData.append('record_date', recordDate);
+            formData.append('note', note);
+            formData.append('tags', tags);
+            formData.append('photo_angle', 'front');
 
-          if (state.selectedPhotoBlob) {
-            formData.append('photo', state.selectedPhotoBlob, `photo-${Date.now()}.jpg`);
+            const res = await fetch('/api/records', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || '儲存失敗');
+            showToast('🎉 本機記錄儲存成功！');
           }
-
-          const res = await fetch('/api/records', { method: 'POST', body: formData });
-          const data = await res.json();
-          if (!data.success) throw new Error(data.error || '儲存失敗');
-          showToast('🎉 本機記錄儲存成功！');
         }
 
         playTone(1046, 0.1);
@@ -1750,6 +1842,20 @@ document.addEventListener('DOMContentLoaded', () => {
       state.compareMode = 'side';
     });
 
+    if (elements.compareAngleTabs) {
+      elements.compareAngleTabs.querySelectorAll('.log-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.compareAngle = btn.dataset.compareAngle || 'front';
+          elements.compareAngleTabs.querySelectorAll('.log-mode-btn').forEach(b => {
+            b.classList.toggle('active', b === btn);
+          });
+          refreshComparisonOptions();
+          playTone(720, 0.03);
+          playHaptic([10]);
+        });
+      });
+    }
+
     elements.compareBeforeSelect.addEventListener('change', updateComparisonDisplay);
     elements.compareAfterSelect.addEventListener('change', updateComparisonDisplay);
 
@@ -1782,10 +1888,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function refreshComparisonOptions() {
-    const list = state.recordsWithPhotos;
+    const curAngle = state.compareAngle || 'front';
+    const list = state.recordsWithPhotos.filter(r => (r.photo_angle || 'front') === curAngle);
 
     if (list.length < 2) {
-      elements.compareBeforeSelect.innerHTML = '<option value="">請先新增至少 2 筆附帶相片的記錄</option>';
+      elements.compareBeforeSelect.innerHTML = `<option value="">${photoAngleLabels[curAngle]}照片尚不足 2 張，請先累積紀錄</option>`;
       elements.compareAfterSelect.innerHTML = '<option value="">--</option>';
       return;
     }
@@ -1948,7 +2055,9 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fill();
       ctx.stroke();
 
-      const diffVal = parseFloat((Number(afterRecord.weight) - Number(beforeRecord.weight)).toFixed(1));
+      const diffVal = (beforeRecord.weight !== null && afterRecord.weight !== null && !isNaN(Number(beforeRecord.weight)) && !isNaN(Number(afterRecord.weight)))
+        ? parseFloat((Number(afterRecord.weight) - Number(beforeRecord.weight)).toFixed(1))
+        : null;
       const daysCount = Math.abs(Math.round((new Date(afterRecord.record_date) - new Date(beforeRecord.record_date)) / (1000 * 60 * 60 * 24)));
 
       let waistDiff = null;
@@ -1966,7 +2075,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       ctx.font = '900 48px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillStyle = diffVal <= 0 ? '#10b981' : '#f43f5e';
-      ctx.fillText((diffVal <= 0 ? `${diffVal} kg` : `+${diffVal} kg`), bannerX + colWidth * 0.5, bannerY + 110);
+      ctx.fillText(diffVal !== null ? (diffVal <= 0 ? `${diffVal} kg` : `+${diffVal} kg`) : '持續記錄中', bannerX + colWidth * 0.5, bannerY + 110);
 
       ctx.font = '600 16px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillStyle = '#94a3b8';
@@ -2080,7 +2189,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ctx.fillStyle = '#f8fafc';
     ctx.font = '900 38px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText(`${Number(record.weight).toFixed(1)} kg`, x + 24, y + h - 45);
+    const cardWeightStr = (record.weight !== null && record.weight !== undefined && !isNaN(Number(record.weight)))
+      ? `${Number(record.weight).toFixed(1)} kg`
+      : '無體重紀錄';
+    ctx.fillText(cardWeightStr, x + 24, y + h - 45);
 
     const subDetails = [];
     if (record.body_fat) subDetails.push(`體脂 ${record.body_fat}%`);

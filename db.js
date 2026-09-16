@@ -182,6 +182,13 @@ const recordDao = {
     const existing = this.getById(id);
     if (!existing) return null;
 
+    if (fields.photo_path && existing.photo_path && fields.photo_path !== existing.photo_path) {
+      const oldPath = path.join(uploadsDir, existing.photo_path);
+      if (fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch (e) {}
+      }
+    }
+
     const weightVal = ('weight' in fields)
       ? (fields.weight !== null && fields.weight !== undefined && fields.weight !== '' && !isNaN(Number(fields.weight)) ? parseFloat(fields.weight) : null)
       : existing.weight;
@@ -195,17 +202,21 @@ const recordDao = {
           chest_cm = CASE WHEN ? IS NOT NULL THEN ? ELSE chest_cm END,
           note = CASE WHEN ? IS NOT NULL THEN ? ELSE note END,
           tags = CASE WHEN ? IS NOT NULL THEN ? ELSE tags END,
-          record_date = CASE WHEN ? IS NOT NULL THEN ? ELSE record_date END
+          record_date = CASE WHEN ? IS NOT NULL THEN ? ELSE record_date END,
+          photo_path = CASE WHEN ? IS NOT NULL THEN ? ELSE photo_path END,
+          photo_angle = CASE WHEN ? IS NOT NULL THEN ? ELSE photo_angle END
       WHERE id = ?
     `);
 
-    const bf = ('body_fat' in fields) ? (fields.body_fat ? parseFloat(fields.body_fat) : null) : null;
-    const waist = ('waist_cm' in fields) ? (fields.waist_cm ? parseFloat(fields.waist_cm) : null) : null;
-    const hip = ('hip_cm' in fields) ? (fields.hip_cm ? parseFloat(fields.hip_cm) : null) : null;
-    const chest = ('chest_cm' in fields) ? (fields.chest_cm ? parseFloat(fields.chest_cm) : null) : null;
-    const note = ('note' in fields) ? fields.note : null;
-    const tags = ('tags' in fields) ? fields.tags : null;
-    const rDate = ('record_date' in fields) ? fields.record_date : null;
+    const bf = (fields.body_fat !== undefined && fields.body_fat !== null && fields.body_fat !== '') ? parseFloat(fields.body_fat) : null;
+    const waist = (fields.waist_cm !== undefined && fields.waist_cm !== null && fields.waist_cm !== '') ? parseFloat(fields.waist_cm) : null;
+    const hip = (fields.hip_cm !== undefined && fields.hip_cm !== null && fields.hip_cm !== '') ? parseFloat(fields.hip_cm) : null;
+    const chest = (fields.chest_cm !== undefined && fields.chest_cm !== null && fields.chest_cm !== '') ? parseFloat(fields.chest_cm) : null;
+    const note = (fields.note !== undefined && fields.note !== null) ? String(fields.note) : null;
+    const tags = (fields.tags !== undefined && fields.tags !== null) ? String(fields.tags) : null;
+    const rDate = (fields.record_date !== undefined && fields.record_date !== null) ? String(fields.record_date) : null;
+    const pPath = (fields.photo_path !== undefined && fields.photo_path !== null) ? String(fields.photo_path) : null;
+    const pAngle = (fields.photo_angle !== undefined && fields.photo_angle !== null) ? String(fields.photo_angle) : null;
 
     stmt.run(
       weightVal,
@@ -216,6 +227,8 @@ const recordDao = {
       note, note,
       tags, tags,
       rDate, rDate,
+      pPath, pPath,
+      pAngle, pAngle,
       id
     );
 
