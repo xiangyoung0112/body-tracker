@@ -28,6 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
     currentLogMode: 'all',
     editingWeightDate: null,
     compareAngle: 'front',
+    timelapseFrames: [],
+    timelapseCurrentIndex: 0,
+    timelapseTimer: null,
+    timelapsePlaying: false,
+    timelapseSpeed: 400,
+    timelapseLoop: true,
     weightSkipped: false,
     logMode: 'all',
     previewFitMode: 'contain',
@@ -223,6 +229,39 @@ document.addEventListener('DOMContentLoaded', () => {
     camCheckSide: document.getElementById('camCheckSide'),
     camCheckBack: document.getElementById('camCheckBack'),
     compareAngleTabs: document.getElementById('compareAngleTabs'),
+    btnModeTimelapse: document.getElementById('btnModeTimelapse'),
+    timelapseCompareView: document.getElementById('timelapseCompareView'),
+    imgTimelapseCurrent: document.getElementById('imgTimelapseCurrent'),
+    timelapseHudAngle: document.getElementById('timelapseHudAngle'),
+    timelapseHudDate: document.getElementById('timelapseHudDate'),
+    timelapseHudWeight: document.getElementById('timelapseHudWeight'),
+    timelapseHudDiff: document.getElementById('timelapseHudDiff'),
+    timelapseScrubber: document.getElementById('timelapseScrubber'),
+    btnTimelapsePrev: document.getElementById('btnTimelapsePrev'),
+    btnTimelapsePlay: document.getElementById('btnTimelapsePlay'),
+    btnTimelapseNext: document.getElementById('btnTimelapseNext'),
+    timelapseFrameCounter: document.getElementById('timelapseFrameCounter'),
+    timelapseSpeedSelect: document.getElementById('timelapseSpeedSelect'),
+    btnTimelapseLoop: document.getElementById('btnTimelapseLoop'),
+    btnOpenTimelapseVideo: document.getElementById('btnOpenTimelapseVideo'),
+    timelapseVideoModal: document.getElementById('timelapseVideoModal'),
+    btnCloseTimelapseVideoModal: document.getElementById('btnCloseTimelapseVideoModal'),
+    timelapseVideoOutput: document.getElementById('timelapseVideoOutput'),
+    timelapseRenderingBox: document.getElementById('timelapseRenderingBox'),
+    timelapseRenderProgressText: document.getElementById('timelapseRenderProgressText'),
+    timelapseRenderDetailText: document.getElementById('timelapseRenderDetailText'),
+    btnDownloadTimelapseVideo: document.getElementById('btnDownloadTimelapseVideo'),
+    btnExportPeriodZip: document.getElementById('btnExportPeriodZip'),
+    exportZipModal: document.getElementById('exportZipModal'),
+    btnCloseExportZipModal: document.getElementById('btnCloseExportZipModal'),
+    zipExportDateRange: document.getElementById('zipExportDateRange'),
+    zipExportPhotoCount: document.getElementById('zipExportPhotoCount'),
+    zipScopeCurrentLabel: document.getElementById('zipScopeCurrentLabel'),
+    zipProgressWrap: document.getElementById('zipProgressWrap'),
+    zipProgressLabel: document.getElementById('zipProgressLabel'),
+    zipProgressPercent: document.getElementById('zipProgressPercent'),
+    zipProgressBar: document.getElementById('zipProgressBar'),
+    btnStartZipDownload: document.getElementById('btnStartZipDownload'),
     dayAlbumModal: document.getElementById('dayAlbumModal'),
     btnCloseDayAlbumModal: document.getElementById('btnCloseDayAlbumModal'),
     dayAlbumModalTitle: document.getElementById('dayAlbumModalTitle'),
@@ -1894,22 +1933,540 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.modalImg.src = '';
   }
 
-  function initComparisonModule() {
-    elements.btnModeSlider.addEventListener('click', () => {
-      elements.btnModeSlider.classList.add('active');
-      elements.btnModeSide.classList.remove('active');
-      elements.sliderCompareView.classList.remove('hidden');
-      elements.sideCompareView.classList.add('hidden');
-      state.compareMode = 'slider';
+
+  // =========================================================================
+  // Time-Lapse Marquee Player & Export Functions
+  // =========================================================================
+
+  function getPeriodRecords(allAngles = false) {
+    if (!elements.compareBeforeSelect || !elements.compareAfterSelect) return [];
+    const beforeId = String(elements.compareBeforeSelect.value || '');
+    const afterId = String(elements.compareAfterSelect.value || '');
+
+    const beforeRecord = state.allRecords.find(r => String(r.id) === beforeId);
+    const afterRecord = state.allRecords.find(r => String(r.id) === afterId);
+
+    if (!beforeRecord || !afterRecord) return [];
+
+    let d1 = (beforeRecord.record_date || '').substring(0, 10);
+    let d2 = (afterRecord.record_date || '').substring(0, 10);
+    if (d1 > d2) [d1, d2] = [d2, d1];
+
+    const curAngle = state.compareAngle || 'front';
+
+    const inRange = state.recordsWithPhotos.filter(r => {
+      const d = (r.record_date || '').substring(0, 10);
+      if (d < d1 || d > d2) return false;
+      if (!allAngles && (r.photo_angle || 'front') !== curAngle) return false;
+      return true;
     });
 
-    elements.btnModeSide.addEventListener('click', () => {
-      elements.btnModeSide.classList.add('active');
-      elements.btnModeSlider.classList.remove('active');
-      elements.sideCompareView.classList.remove('hidden');
-      elements.sliderCompareView.classList.add('hidden');
-      state.compareMode = 'side';
-    });
+    return inRange.sort((a, b) => new Date(a.record_date) - new Date(b.record_date));
+  }
+
+  function updateTimelapsePlayer() {
+    state.timelapseFrames = getPeriodRecords(false);
+    const count = state.timelapseFrames.length;
+
+    if (count === 0) {
+      if (elements.imgTimelapseCurrent) elements.imgTimelapseCurrent.src = '';
+      if (elements.timelapseHudDate) elements.timelapseHudDate.textContent = '此期間無照片';
+      if (elements.timelapseHudWeight) elements.timelapseHudWeight.textContent = '--';
+      if (elements.timelapseHudDiff) elements.timelapseHudDiff.textContent = '--';
+      if (elements.timelapseFrameCounter) elements.timelapseFrameCounter.textContent = '第 0 / 0 天';
+      if (elements.timelapseScrubber) {
+        elements.timelapseScrubber.max = 0;
+        elements.timelapseScrubber.value = 0;
+      }
+      return;
+    }
+
+    state.timelapseCurrentIndex = Math.min(state.timelapseCurrentIndex || 0, count - 1);
+    if (elements.timelapseScrubber) {
+      elements.timelapseScrubber.min = 0;
+      elements.timelapseScrubber.max = count - 1;
+      elements.timelapseScrubber.value = state.timelapseCurrentIndex;
+    }
+    renderTimelapseFrame(state.timelapseCurrentIndex);
+  }
+
+  function renderTimelapseFrame(index) {
+    if (!state.timelapseFrames || state.timelapseFrames.length === 0) return;
+    const count = state.timelapseFrames.length;
+    const safeIdx = Math.max(0, Math.min(index, count - 1));
+    state.timelapseCurrentIndex = safeIdx;
+
+    const frame = state.timelapseFrames[safeIdx];
+    const initialFrame = state.timelapseFrames[0];
+
+    const url = getRecordPhotoUrl(frame);
+    if (elements.imgTimelapseCurrent && url) {
+      elements.imgTimelapseCurrent.src = url;
+    }
+
+    const angle = frame.photo_angle || 'front';
+    if (elements.timelapseHudAngle) {
+      elements.timelapseHudAngle.textContent = photoAngleLabels[angle] || '體態照';
+    }
+
+    const dateStr = (frame.record_date || '').substring(0, 10);
+    if (elements.timelapseHudDate) {
+      elements.timelapseHudDate.textContent = dateStr;
+    }
+
+    const wStr = (frame.weight !== null && frame.weight !== undefined && !isNaN(Number(frame.weight)))
+      ? `${Number(frame.weight).toFixed(1)} kg`
+      : '無體重';
+    if (elements.timelapseHudWeight) {
+      elements.timelapseHudWeight.textContent = wStr;
+    }
+
+    if (elements.timelapseHudDiff) {
+      if (frame.weight !== null && initialFrame.weight !== null && !isNaN(Number(frame.weight)) && !isNaN(Number(initialFrame.weight))) {
+        const diff = (Number(frame.weight) - Number(initialFrame.weight)).toFixed(1);
+        elements.timelapseHudDiff.textContent = Number(diff) <= 0 ? `${diff} kg` : `+${diff} kg`;
+        elements.timelapseHudDiff.classList.remove('hidden');
+      } else {
+        elements.timelapseHudDiff.classList.add('hidden');
+      }
+    }
+
+    if (elements.timelapseFrameCounter) {
+      elements.timelapseFrameCounter.textContent = `第 ${safeIdx + 1} / ${count} 天`;
+    }
+
+    if (elements.timelapseScrubber) {
+      elements.timelapseScrubber.value = safeIdx;
+    }
+  }
+
+  function startTimelapse() {
+    if (state.timelapsePlaying) return;
+    if (!state.timelapseFrames || state.timelapseFrames.length <= 1) {
+      showToast('此期間照片數量不足，無法輪播', true);
+      return;
+    }
+
+    state.timelapsePlaying = true;
+    if (elements.btnTimelapsePlay) {
+      elements.btnTimelapsePlay.innerHTML = '⏸ 暫停';
+    }
+
+    state.timelapseTimer = setInterval(() => {
+      let nextIdx = state.timelapseCurrentIndex + 1;
+      if (nextIdx >= state.timelapseFrames.length) {
+        if (state.timelapseLoop) {
+          nextIdx = 0;
+        } else {
+          stopTimelapse();
+          return;
+        }
+      }
+      renderTimelapseFrame(nextIdx);
+    }, state.timelapseSpeed || 400);
+  }
+
+  function stopTimelapse() {
+    state.timelapsePlaying = false;
+    if (state.timelapseTimer) {
+      clearInterval(state.timelapseTimer);
+      state.timelapseTimer = null;
+    }
+    if (elements.btnTimelapsePlay) {
+      elements.btnTimelapsePlay.innerHTML = '▶ 播放';
+    }
+  }
+
+  function togglePlayTimelapse() {
+    if (state.timelapsePlaying) {
+      stopTimelapse();
+      playTone(550, 0.03);
+    } else {
+      startTimelapse();
+      playTone(750, 0.04);
+    }
+  }
+
+  // Generate Video
+  async function generateTimelapseVideo() {
+    const frames = getPeriodRecords(false);
+    if (frames.length < 2) {
+      showToast('此期間照片不足 2 張，無法生成縮時影片', true);
+      return;
+    }
+
+    if (elements.timelapseVideoModal) elements.timelapseVideoModal.classList.remove('hidden');
+    if (elements.timelapseVideoOutput) elements.timelapseVideoOutput.classList.add('hidden');
+    if (elements.timelapseRenderingBox) elements.timelapseRenderingBox.classList.remove('hidden');
+    if (elements.btnDownloadTimelapseVideo) elements.btnDownloadTimelapseVideo.classList.add('hidden');
+
+    try {
+      if (elements.timelapseRenderProgressText) elements.timelapseRenderProgressText.textContent = '正在載入所有照片...';
+
+      // Preload images
+      const loadedImgs = await Promise.all(frames.map(f => {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve({ img, frame: f });
+          img.onerror = () => resolve({ img: null, frame: f });
+          img.src = getRecordPhotoUrl(f);
+        });
+      }));
+
+      const validFrames = loadedImgs.filter(item => item.img !== null);
+      if (validFrames.length < 2) {
+        throw new Error('照片載入失敗');
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1350;
+      const ctx = canvas.getContext('2d');
+
+      const stream = canvas.captureStream ? canvas.captureStream(30) : null;
+      if (!stream || typeof MediaRecorder === 'undefined') {
+        throw new Error('瀏覽器不支援直接生成縮時影片，建議使用「打包每日照片」下載圖片！');
+      }
+
+      let mimeType = 'video/webm';
+      if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+        mimeType = 'video/mp4;codecs=avc1';
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        mimeType = 'video/mp4';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        mimeType = 'video/webm;codecs=vp9';
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6000000 });
+      const chunks = [];
+      recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+      const drawFrame = (item, index, total) => {
+        const { img, frame } = item;
+        // Background gradient
+        const bgGrad = ctx.createLinearGradient(0, 0, 0, 1350);
+        bgGrad.addColorStop(0, '#0f172a');
+        bgGrad.addColorStop(0.5, '#0b0f19');
+        bgGrad.addColorStop(1, '#020617');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, 1080, 1350);
+
+        // Header Title
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '800 24px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('FITTRACK TRANSFORMATION TIME-LAPSE', 540, 55);
+
+        // Subtitle
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '600 16px -apple-system, sans-serif';
+        ctx.fillText('體 態 蛻 變 縮 時 跑 馬 燈', 540, 90);
+
+        // Photo card area (x=60, y=120, w=960, h=1050)
+        const cX = 60, cY = 120, cW = 960, cH = 1050;
+        ctx.save();
+        roundRect(ctx, cX, cY, cW, cH, 20);
+        ctx.clip();
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(cX, cY, cW, cH);
+
+        const imgRatio = img.width / img.height;
+        const boxRatio = cW / cH;
+        let sW, sH, sX, sY;
+        if (imgRatio > boxRatio) {
+          sH = img.height;
+          sW = img.height * boxRatio;
+          sX = (img.width - sW) / 2;
+          sY = 0;
+        } else {
+          sW = img.width;
+          sH = img.width / boxRatio;
+          sX = 0;
+          sY = (img.height - sH) / 2;
+        }
+        ctx.drawImage(img, sX, sY, sW, sH, cX, cY, cW, cH);
+        ctx.restore();
+
+        // Bottom HUD Bar
+        const bX = 60, bY = 1195, bW = 960, bH = 120;
+        ctx.save();
+        roundRect(ctx, bX, bY, bW, bH, 18);
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+
+        const dateStr = (frame.record_date || '').substring(0, 10);
+        const wStr = (frame.weight !== null && frame.weight !== undefined) ? `${frame.weight} kg` : '無體重';
+        const angleStr = photoAngleLabels[frame.photo_angle || 'front'] || '正面';
+
+        ctx.textAlign = 'left';
+        ctx.font = '800 28px -apple-system, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(dateStr, bX + 30, bY + 50);
+
+        ctx.font = '600 16px -apple-system, sans-serif';
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText(`${angleStr} • 第 ${index + 1} / ${total} 天`, bX + 30, bY + 88);
+
+        ctx.textAlign = 'right';
+        ctx.font = '900 36px -apple-system, sans-serif';
+        ctx.fillStyle = '#10b981';
+        ctx.fillText(wStr, bX + bW - 30, bY + 68);
+        ctx.restore();
+      };
+
+      recorder.start();
+
+      const msPerFrame = 400;
+      for (let i = 0; i < validFrames.length; i++) {
+        if (elements.timelapseRenderProgressText) {
+          elements.timelapseRenderProgressText.textContent = `正在錄製縮時幀 (${i + 1}/${validFrames.length})...`;
+        }
+        drawFrame(validFrames[i], i, validFrames.length);
+        await new Promise(r => setTimeout(r, msPerFrame));
+      }
+
+      // Hold last frame
+      drawFrame(validFrames[validFrames.length - 1], validFrames.length - 1, validFrames.length);
+      await new Promise(r => setTimeout(r, 1200));
+
+      recorder.stop();
+      await new Promise(resolve => { recorder.onstop = resolve; });
+
+      const videoBlob = new Blob(chunks, { type: mimeType });
+      const videoUrl = URL.createObjectURL(videoBlob);
+
+      if (elements.timelapseRenderingBox) elements.timelapseRenderingBox.classList.add('hidden');
+      if (elements.timelapseVideoOutput) {
+        elements.timelapseVideoOutput.src = videoUrl;
+        elements.timelapseVideoOutput.classList.remove('hidden');
+        elements.timelapseVideoOutput.play();
+      }
+
+      if (elements.btnDownloadTimelapseVideo) {
+        elements.btnDownloadTimelapseVideo.classList.remove('hidden');
+        elements.btnDownloadTimelapseVideo.onclick = () => {
+          const a = document.createElement('a');
+          const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+          const d1 = validFrames[0].frame.record_date.substring(0, 10);
+          const d2 = validFrames[validFrames.length - 1].frame.record_date.substring(0, 10);
+          a.href = videoUrl;
+          a.download = `FitTrack-Timelapse-${d1}-to-${d2}.${ext}`;
+          a.click();
+        };
+      }
+
+      showToast('🎉 跑馬燈縮時影片已生成完畢！');
+
+    } catch (err) {
+      console.error('Timelapse video generation error:', err);
+      showToast('生成影片失敗: ' + err.message, true);
+      if (elements.timelapseVideoModal) elements.timelapseVideoModal.classList.add('hidden');
+    }
+  }
+
+  // Export Daily Photos as ZIP
+  async function exportPeriodPhotosZip() {
+    const scopeRadio = document.querySelector('input[name="zipAngleScope"]:checked');
+    const scope = scopeRadio ? scopeRadio.value : 'all';
+    const records = getPeriodRecords(scope === 'all');
+
+    if (records.length === 0) {
+      showToast('此期間沒有體態照片可供匯出', true);
+      return;
+    }
+
+    if (!window.JSZip) {
+      showToast('壓縮元件載入中，請稍候重試...', true);
+      return;
+    }
+
+    if (elements.zipProgressWrap) elements.zipProgressWrap.classList.remove('hidden');
+    if (elements.btnStartZipDownload) elements.btnStartZipDownload.disabled = true;
+
+    try {
+      const zip = new JSZip();
+
+      const d1 = records[0].record_date.substring(0, 10);
+      const d2 = records[records.length - 1].record_date.substring(0, 10);
+
+      // Summary text file
+      let summary = `============================================================\n`;
+      summary += `  FitTrack 體態蛻變進度 - 期間每日照片打包\n`;
+      summary += `============================================================\n`;
+      summary += `匯出期間: ${d1} 至 ${d2}\n`;
+      summary += `照片總數: ${records.length} 張\n`;
+      summary += `角度範圍: ${scope === 'all' ? '全部角度 (正面/側面/背面)' : (photoAngleLabels[state.compareAngle] || '目前角度')}\n\n`;
+      summary += `【每日照片詳細記錄清單】\n`;
+      records.forEach((r, idx) => {
+        const d = (r.record_date || '').substring(0, 10);
+        const a = photoAngleLabels[r.photo_angle || 'front'] || '正面';
+        const w = (r.weight !== null && r.weight !== undefined) ? `${r.weight} kg` : '未量體重';
+        const notes = r.note ? ` [備註: ${r.note}]` : '';
+        summary += `${String(idx + 1).padStart(2, '0')}. 日期: ${d} | 角度: ${a} | 體重: ${w}${notes}\n`;
+      });
+      summary += `\n持之以恆，見證每一步蛻變！ — FitTrack 私人體態記錄\n`;
+
+      zip.file('體態蛻變進度摘要.txt', summary);
+
+      // Download images sequentially and add to zip
+      for (let i = 0; i < records.length; i++) {
+        const r = records[i];
+        const pct = Math.round(((i + 1) / records.length) * 85);
+        if (elements.zipProgressBar) elements.zipProgressBar.style.width = `${pct}%`;
+        if (elements.zipProgressPercent) elements.zipProgressPercent.textContent = `${pct}%`;
+        if (elements.zipProgressLabel) {
+          elements.zipProgressLabel.textContent = `正在下載照片 (${i + 1}/${records.length})...`;
+        }
+
+        const url = getRecordPhotoUrl(r);
+        if (!url) continue;
+
+        const res = await fetch(url);
+        const blob = await res.blob();
+
+        const d = (r.record_date || '').substring(0, 10);
+        const a = photoAngleLabels[r.photo_angle || 'front'] || '正面';
+        const w = (r.weight !== null && r.weight !== undefined) ? `_${r.weight}kg` : '';
+        const fname = `${d}_${a}${w}.jpg`;
+
+        zip.file(fname, blob);
+      }
+
+      if (elements.zipProgressLabel) elements.zipProgressLabel.textContent = '正在壓縮打包成 ZIP 檔案...';
+      if (elements.zipProgressPercent) elements.zipProgressPercent.textContent = '95%';
+      if (elements.zipProgressBar) elements.zipProgressBar.style.width = '95%';
+
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+
+      if (elements.zipProgressBar) elements.zipProgressBar.style.width = '100%';
+      if (elements.zipProgressPercent) elements.zipProgressPercent.textContent = '100%';
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = `FitTrack_照片包_${d1}_至_${d2}.zip`;
+      a.click();
+
+      showToast(`🎉 ${records.length} 張體態照片已成功打包下載！`);
+      if (elements.exportZipModal) elements.exportZipModal.classList.add('hidden');
+
+    } catch (err) {
+      console.error('ZIP export error:', err);
+      showToast('打包下載失敗: ' + err.message, true);
+    } finally {
+      if (elements.btnStartZipDownload) elements.btnStartZipDownload.disabled = false;
+      if (elements.zipProgressWrap) elements.zipProgressWrap.classList.add('hidden');
+    }
+  }
+
+
+  function initComparisonModule() {
+    const switchCompareMode = (mode) => {
+      state.compareMode = mode;
+      stopTimelapse();
+
+      if (elements.btnModeSlider) elements.btnModeSlider.classList.toggle('active', mode === 'slider');
+      if (elements.btnModeSide) elements.btnModeSide.classList.toggle('active', mode === 'side');
+      if (elements.btnModeTimelapse) elements.btnModeTimelapse.classList.toggle('active', mode === 'timelapse');
+
+      if (elements.sliderCompareView) elements.sliderCompareView.classList.toggle('hidden', mode !== 'slider');
+      if (elements.sideCompareView) elements.sideCompareView.classList.toggle('hidden', mode !== 'side');
+      if (elements.timelapseCompareView) elements.timelapseCompareView.classList.toggle('hidden', mode !== 'timelapse');
+
+      if (mode === 'timelapse') {
+        updateTimelapsePlayer();
+      }
+    };
+
+    if (elements.btnModeSlider) {
+      elements.btnModeSlider.addEventListener('click', () => switchCompareMode('slider'));
+    }
+    if (elements.btnModeSide) {
+      elements.btnModeSide.addEventListener('click', () => switchCompareMode('side'));
+    }
+    if (elements.btnModeTimelapse) {
+      elements.btnModeTimelapse.addEventListener('click', () => switchCompareMode('timelapse'));
+    }
+
+    if (elements.btnTimelapsePlay) {
+      elements.btnTimelapsePlay.addEventListener('click', togglePlayTimelapse);
+    }
+    if (elements.btnTimelapsePrev) {
+      elements.btnTimelapsePrev.addEventListener('click', () => {
+        stopTimelapse();
+        renderTimelapseFrame(state.timelapseCurrentIndex - 1);
+        playTone(600, 0.03);
+      });
+    }
+    if (elements.btnTimelapseNext) {
+      elements.btnTimelapseNext.addEventListener('click', () => {
+        stopTimelapse();
+        renderTimelapseFrame(state.timelapseCurrentIndex + 1);
+        playTone(600, 0.03);
+      });
+    }
+    if (elements.timelapseScrubber) {
+      elements.timelapseScrubber.addEventListener('input', (e) => {
+        stopTimelapse();
+        renderTimelapseFrame(parseInt(e.target.value, 10));
+      });
+    }
+    if (elements.timelapseSpeedSelect) {
+      elements.timelapseSpeedSelect.addEventListener('change', (e) => {
+        state.timelapseSpeed = parseInt(e.target.value, 10) || 400;
+        if (state.timelapsePlaying) {
+          stopTimelapse();
+          startTimelapse();
+        }
+      });
+    }
+    if (elements.btnTimelapseLoop) {
+      elements.btnTimelapseLoop.addEventListener('click', () => {
+        state.timelapseLoop = !state.timelapseLoop;
+        elements.btnTimelapseLoop.classList.toggle('active', state.timelapseLoop);
+        playTone(680, 0.03);
+      });
+    }
+
+    if (elements.btnOpenTimelapseVideo) {
+      elements.btnOpenTimelapseVideo.addEventListener('click', generateTimelapseVideo);
+    }
+    if (elements.btnCloseTimelapseVideoModal) {
+      elements.btnCloseTimelapseVideoModal.addEventListener('click', () => {
+        if (elements.timelapseVideoModal) elements.timelapseVideoModal.classList.add('hidden');
+        if (elements.timelapseVideoOutput) elements.timelapseVideoOutput.pause();
+      });
+    }
+
+    if (elements.btnExportPeriodZip) {
+      elements.btnExportPeriodZip.addEventListener('click', () => {
+        const frames = getPeriodRecords(false);
+        const allFrames = getPeriodRecords(true);
+        if (allFrames.length === 0) {
+          showToast('此期間無任何體態照片可供打包', true);
+          return;
+        }
+
+        const d1 = allFrames[0].record_date.substring(0, 10);
+        const d2 = allFrames[allFrames.length - 1].record_date.substring(0, 10);
+
+        if (elements.zipExportDateRange) elements.zipExportDateRange.textContent = `${d1} 至 ${d2}`;
+        if (elements.zipExportPhotoCount) elements.zipExportPhotoCount.textContent = `此區間共 ${allFrames.length} 張體態照 (目前角度: ${frames.length} 張)`;
+        if (elements.zipScopeCurrentLabel) elements.zipScopeCurrentLabel.textContent = `🚶 僅目前對比角度 (${photoAngleLabels[state.compareAngle] || '正面'}, 共 ${frames.length} 張)`;
+        if (elements.exportZipModal) elements.exportZipModal.classList.remove('hidden');
+      });
+    }
+    if (elements.btnCloseExportZipModal) {
+      elements.btnCloseExportZipModal.addEventListener('click', () => {
+        if (elements.exportZipModal) elements.exportZipModal.classList.add('hidden');
+      });
+    }
+    if (elements.btnStartZipDownload) {
+      elements.btnStartZipDownload.addEventListener('click', exportPeriodPhotosZip);
+    }
 
     if (elements.compareAngleTabs) {
       elements.compareAngleTabs.querySelectorAll('.log-mode-btn').forEach(btn => {
@@ -2026,6 +2583,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     elements.compareSummaryBadge.classList.remove('hidden');
+    if (state.compareMode === 'timelapse') {
+      updateTimelapsePlayer();
+    }
   }
 
   async function generateTransformationCollage() {

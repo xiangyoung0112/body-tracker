@@ -19,6 +19,12 @@
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./supabase-config.js"></script>
+  <script src="./vendor/jszip.min.js"></script>
+  <script>
+    if (!window.JSZip) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"><\/script>');
+    }
+  </script>
 
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -387,15 +393,24 @@
             <span id="compareWaistDiffWrap" class="hidden" style="margin-left:8px; color:#38bdf8;">腰圍: <strong id="compareWaistDiff">0 cm</strong></span>
           </div>
 
-          <button type="button" id="btnGenerateCollage" class="btn-primary-gradient" style="margin-top: 14px; width: 100%; padding: 12px; font-size: 14px; border-radius: 12px;">
-            📸 一鍵生成 Before & After 對比海報
-          </button>
+          <div class="compare-action-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 14px;">
+            <button type="button" id="btnGenerateCollage" class="btn-primary-gradient" style="padding: 10px 8px; font-size: 13px; border-radius: 12px; font-weight:700;">
+              📸 對比海報
+            </button>
+            <button type="button" id="btnOpenTimelapseVideo" class="btn-secondary" style="padding: 10px 8px; font-size: 13px; border-radius: 12px; font-weight:700; color:#38bdf8; border-color:rgba(56,189,248,0.4); background:rgba(56,189,248,0.1);">
+              🎬 跑馬燈影片
+            </button>
+            <button type="button" id="btnExportPeriodZip" class="btn-secondary" style="padding: 10px 8px; font-size: 13px; border-radius: 12px; font-weight:700; color:#34d399; border-color:rgba(52,211,153,0.4); background:rgba(52,211,153,0.1);">
+              📦 每日照片(ZIP)
+            </button>
+          </div>
         </div>
 
         <div id="compareStage" class="card compare-stage-card">
           <div class="compare-mode-toggle">
             <button type="button" id="btnModeSlider" class="compare-tab-btn active">滑動比對</button>
             <button type="button" id="btnModeSide" class="compare-tab-btn">並排比對</button>
+            <button type="button" id="btnModeTimelapse" class="compare-tab-btn">🎞️ 縮時跑馬燈</button>
           </div>
 
           <div id="sliderCompareView" class="comparison-slider-container">
@@ -435,6 +450,50 @@
               <div class="side-caption">
                 <span class="side-badge after">AFTER</span>
                 <div id="sideAfterInfo" class="side-info">--</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="timelapseCompareView" class="timelapse-container hidden">
+            <div class="timelapse-stage">
+              <img id="imgTimelapseCurrent" src="" alt="體態縮時">
+              <div class="timelapse-hud-overlay">
+                <div class="timelapse-hud-left">
+                  <span id="timelapseHudAngle" class="timelapse-badge">正面</span>
+                  <span id="timelapseHudDate" class="timelapse-date">--</span>
+                </div>
+                <div class="timelapse-hud-right">
+                  <span id="timelapseHudWeight" class="timelapse-weight">--</span>
+                  <span id="timelapseHudDiff" class="timelapse-diff">--</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="timelapse-controls-card">
+              <div class="timelapse-scrubber-row">
+                <input type="range" id="timelapseScrubber" min="0" max="0" value="0" class="timelapse-range">
+              </div>
+
+              <div class="timelapse-buttons-row">
+                <div class="timelapse-btn-group">
+                  <button type="button" id="btnTimelapsePrev" class="timelapse-icon-btn" title="上一天">⏮</button>
+                  <button type="button" id="btnTimelapsePlay" class="timelapse-play-btn">▶ 播放</button>
+                  <button type="button" id="btnTimelapseNext" class="timelapse-icon-btn" title="下一天">⏭</button>
+                </div>
+
+                <div class="timelapse-info-group">
+                  <span id="timelapseFrameCounter" class="timelapse-counter">第 1 / 1 天</span>
+                </div>
+
+                <div class="timelapse-options-group">
+                  <select id="timelapseSpeedSelect" class="timelapse-speed-select" title="播放速度">
+                    <option value="800">0.5x</option>
+                    <option value="400" selected>1.0x</option>
+                    <option value="200">2.0x</option>
+                    <option value="100">4.0x</option>
+                  </select>
+                  <button type="button" id="btnTimelapseLoop" class="timelapse-icon-btn active" title="循環播放">🔁</button>
+                </div>
               </div>
             </div>
           </div>
@@ -772,6 +831,76 @@
         <div style="display: flex; gap: 8px; margin-top: 14px;">
           <button type="button" id="btnDownloadCollage" class="btn-primary-gradient" style="flex:1; padding: 12px;">⬇️ 下載高清海報</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 體態蛻變縮時跑馬燈影片導出彈窗 -->
+    <div id="timelapseVideoModal" class="modal-backdrop hidden">
+      <div class="modal-dialog collage-dialog">
+        <button type="button" id="btnCloseTimelapseVideoModal" class="btn-close-modal">✕</button>
+        <h3 style="font-size: 18px; margin-bottom: 4px; color:#fff;">🎬 體態蛻變縮時跑馬燈影片</h3>
+        <p id="timelapseVideoSub" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">將這段期間的每日體態變化生成縮時短片</p>
+
+        <div id="timelapseVideoPreviewBox" class="collage-preview-container" style="background:#020617; border-radius:12px; overflow:hidden; min-height:280px; display:flex; align-items:center; justify-content:center;">
+          <video id="timelapseVideoOutput" playsinline controls loop class="hidden" style="max-width:100%; max-height:min(60vh, 500px); border-radius:8px;"></video>
+          <div id="timelapseRenderingBox" style="text-align:center; padding: 30px 20px;">
+            <div class="shutter-icon-wrap" style="margin: 0 auto 16px;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
+            <div id="timelapseRenderProgressText" style="font-size: 15px; font-weight:700; color:#fff; margin-bottom: 6px;">正在錄製縮時動畫...</div>
+            <div id="timelapseRenderDetailText" style="font-size: 12px; color: var(--text-secondary);">正在合成每一天的體態畫面</div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 14px;">
+          <button type="button" id="btnDownloadTimelapseVideo" class="btn-primary-gradient hidden" style="flex:1; padding: 12px;">⬇️ 下載縮時跑馬燈影片 (MP4/WebM)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 匯出期間每日照片打包彈窗 -->
+    <div id="exportZipModal" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <button type="button" id="btnCloseExportZipModal" class="btn-close-modal">✕</button>
+        <h3 style="font-size: 18px; margin-bottom: 4px; color:#fff;">📦 打包匯出期間每日照片 (ZIP)</h3>
+        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px;">一鍵打包指定區間的所有體態照片檔案與數據摘要</p>
+
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+          <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">匯出日期區間：</div>
+          <div id="zipExportDateRange" style="font-size: 15px; font-weight: 700; color: #38bdf8;">--</div>
+          <div id="zipExportPhotoCount" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">--</div>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+          <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">選擇要包含的角度：</div>
+          <div style="display: flex; gap: 10px; flex-direction: column;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
+              <input type="radio" name="zipAngleScope" value="all" checked>
+              <span>🌟 全部角度照片 (正面、側面、背面完整打包)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
+              <input type="radio" name="zipAngleScope" value="current">
+              <span id="zipScopeCurrentLabel">🚶 僅目前對比角度</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="zipProgressWrap" class="hidden" style="margin-bottom: 14px;">
+          <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+            <span id="zipProgressLabel">正在下載打包照片...</span>
+            <span id="zipProgressPercent">0%</span>
+          </div>
+          <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow:hidden;">
+            <div id="zipProgressBar" style="height:100%; width:0%; background: linear-gradient(90deg, #06b6d4, #10b981); transition: width 0.2s;"></div>
+          </div>
+        </div>
+
+        <button type="button" id="btnStartZipDownload" class="btn-primary-gradient" style="width:100%; padding: 12px; font-size: 14px; border-radius: 12px; font-weight: 700;">
+          ⚡ 開始打包並下載 ZIP 檔案
+        </button>
       </div>
     </div>
 
