@@ -316,6 +316,22 @@ window.SupabaseService = (() => {
         }
       }
 
+      if (weightVal === null && photo_path) {
+        try {
+          const dayAll = await this.getAllRecords();
+          const dayKey = (record_date || new Date().toISOString()).substring(0, 10);
+          const withWeight = dayAll.find(r => (r.record_date || '').substring(0, 10) === dayKey && r.weight !== null && r.weight !== undefined);
+          if (withWeight) {
+            weightVal = withWeight.weight;
+          }
+        } catch (e) {}
+      } else if (weightVal !== null && !photo_path) {
+        try {
+          const dayKey = (record_date || new Date().toISOString()).substring(0, 10);
+          await this.updateWeightByDate(dayKey, weightVal);
+        } catch (e) {}
+      }
+
       const payload = {
         weight: weightVal,
         body_fat: body_fat ? parseFloat(body_fat) : null,

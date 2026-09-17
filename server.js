@@ -144,9 +144,22 @@ app.post('/api/records', upload.single('photo'), (req, res) => {
       }
     }
 
-    const weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
+    const dayKey = (record_date || new Date().toISOString()).substring(0, 10);
+    let weightVal = (weight !== null && weight !== undefined && weight !== '' && !isNaN(Number(weight)))
       ? parseFloat(weight)
       : null;
+
+    if (weightVal === null && photoPath) {
+      // Inherit existing weight on this day if previously recorded
+      const dayAll = recordDao.getAll(100).filter(r => (r.record_date || '').substring(0, 10) === dayKey);
+      const withWeight = dayAll.find(r => r.weight !== null && r.weight !== undefined && !isNaN(Number(r.weight)));
+      if (withWeight) {
+        weightVal = withWeight.weight;
+      }
+    } else if (weightVal !== null && !photoPath) {
+      // Pure weight: sync to any earlier photo records on this day with null weight
+      recordDao.updateWeightByDate(dayKey, weightVal);
+    }
 
     const newRecord = recordDao.create({
       weight: weightVal,

@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     editingWeightDate: null,
     compareAngle: 'front',
     weightSkipped: false,
+    logMode: 'all',
     previewFitMode: 'contain',
     ghostEnabled: true,
     ghostOpacity: 0.35,
@@ -210,6 +211,13 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraAngleBar: document.getElementById('cameraAngleBar'),
     cameraFlowHint: document.getElementById('cameraFlowHint'),
     btnFinishCameraSession: document.getElementById('btnFinishCameraSession'),
+    btnSaveCameraDirectly: document.getElementById('btnSaveCameraDirectly'),
+    cameraSaveDirectCount: document.getElementById('cameraSaveDirectCount'),
+    btnTopFinishCamera: document.getElementById('btnTopFinishCamera'),
+    logModeTabs: document.getElementById('logModeTabs'),
+    btnSkipWeight: document.getElementById('btnSkipWeight'),
+    skipWeightNotice: document.getElementById('skipWeightNotice'),
+    btnAlbumEditWeight: document.getElementById('btnAlbumEditWeight'),
     cameraDoneCount: document.getElementById('cameraDoneCount'),
     camCheckFront: document.getElementById('camCheckFront'),
     camCheckSide: document.getElementById('camCheckSide'),
@@ -710,9 +718,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const doneCount = photoAngleOrder.filter(a => state.selectedPhotos[a]).length;
     if (elements.cameraDoneCount) elements.cameraDoneCount.textContent = doneCount;
+    if (elements.cameraSaveDirectCount) elements.cameraSaveDirectCount.textContent = doneCount;
 
     if (elements.btnFinishCameraSession) {
       elements.btnFinishCameraSession.classList.toggle('hidden', doneCount === 0);
+    }
+    if (elements.btnTopFinishCamera) {
+      elements.btnTopFinishCamera.classList.toggle('hidden', doneCount === 0);
+    }
+    if (elements.btnSaveCameraDirectly) {
+      elements.btnSaveCameraDirectly.classList.toggle('hidden', doneCount === 0);
+      if (doneCount === 3) {
+        elements.btnSaveCameraDirectly.classList.add('pulse');
+        elements.btnSaveCameraDirectly.innerHTML = '🎉 3角度全拍完！點此立即儲存相簿 (3/3)';
+      } else {
+        elements.btnSaveCameraDirectly.classList.remove('pulse');
+        elements.btnSaveCameraDirectly.innerHTML = `💾 立即儲存相簿 (${doneCount}/3)`;
+      }
     }
   }
 
@@ -780,6 +802,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (elements.btnCameraShutter) {
       elements.btnCameraShutter.addEventListener('click', triggerCameraShutter);
+    }
+
+    if (elements.cameraAngleBar) {
+      elements.cameraAngleBar.querySelectorAll('.camera-angle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const angle = btn.dataset.angle || 'front';
+          selectPhotoAngle(angle);
+          updateCameraAngleState();
+          updateGhostOverlay();
+          playTone(680, 0.04);
+          playHaptic([15]);
+        });
+      });
+    }
+
+    const handleFinishCamera = () => {
+      closeCountdownCamera();
+      if (elements.btnSubmitRecord) {
+        elements.btnSubmitRecord.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        elements.btnSubmitRecord.classList.remove('highlight-pulse');
+        void elements.btnSubmitRecord.offsetWidth;
+        elements.btnSubmitRecord.classList.add('highlight-pulse');
+      }
+      showToast('✓ 體態照片已就緒，請點擊下方儲存按鈕存檔！');
+    };
+
+    if (elements.btnFinishCameraSession) {
+      elements.btnFinishCameraSession.addEventListener('click', handleFinishCamera);
+    }
+    if (elements.btnTopFinishCamera) {
+      elements.btnTopFinishCamera.addEventListener('click', handleFinishCamera);
+    }
+
+    if (elements.btnSaveCameraDirectly) {
+      elements.btnSaveCameraDirectly.addEventListener('click', async () => {
+        await executeSaveRecords(true);
+      });
     }
   }
 
@@ -1023,103 +1082,52 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.cameraInput.value = '';
   }
 
-  function initFormSubmit() {
-    elements.recordForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function executeSaveRecords(fromCamera = false) {
+    const weightRaw = elements.weightInput ? elements.weightInput.value.trim() : '';
+    const weight = (!state.weightSkipped && weightRaw !== '' && !isNaN(parseFloat(weightRaw)) && parseFloat(weightRaw) > 0)
+      ? parseFloat(weightRaw)
+      : null;
 
-      const weight = parseFloat(elements.weightInput.value);
-      if (isNaN(weight) || weight <= 0) {
-        showToast('請輸入有效體重', true);
-        elements.weightInput.focus();
-        return;
-      }
+    const bodyFat = (elements.bodyFatInput && elements.bodyFatInput.value) ? parseFloat(elements.bodyFatInput.value) : null;
+    const waist = (elements.waistInput && elements.waistInput.value) ? parseFloat(elements.waistInput.value) : null;
+    const hip = (elements.hipInput && elements.hipInput.value) ? parseFloat(elements.hipInput.value) : null;
+    const chest = (elements.chestInput && elements.chestInput.value) ? parseFloat(elements.chestInput.value) : null;
 
-      const bodyFat = elements.bodyFatInput.value ? parseFloat(elements.bodyFatInput.value) : null;
-      const waist = (elements.waistInput && elements.waistInput.value) ? parseFloat(elements.waistInput.value) : null;
-      const hip = (elements.hipInput && elements.hipInput.value) ? parseFloat(elements.hipInput.value) : null;
-      const chest = (elements.chestInput && elements.chestInput.value) ? parseFloat(elements.chestInput.value) : null;
+    const recordDate = (elements.recordDateInput && elements.recordDateInput.value) || new Date().toISOString();
+    const note = elements.noteInput ? elements.noteInput.value.trim() : '';
+    const tags = Array.from(state.selectedTags).join(',');
+    const pendingPhotos = photoAngleOrder
+      .filter(angle => state.selectedPhotos[angle])
+      .map(angle => ({ angle, blob: state.selectedPhotos[angle] }));
 
-      const recordDate = elements.recordDateInput.value || new Date().toISOString();
-      const note = elements.noteInput.value.trim();
-      const tags = Array.from(state.selectedTags).join(',');
-      const pendingPhotos = photoAngleOrder.filter(angle => state.selectedPhotos[angle]).map(angle => ({ angle, blob: state.selectedPhotos[angle] }));
-      const dayKey = recordDate.substring(0, 10);
-      const existingDayPhotos = state.allRecords.filter(r => (r.photo_path || r.photo_url) && String(r.record_date || '').substring(0, 10) === dayKey);
-      if (existingDayPhotos.length + pendingPhotos.length > 3) {
-        showToast(`${dayKey} 每日最多 3 張；請先刪除舊照片再替換`, true);
-        return;
-      }
-      const duplicateAngle = pendingPhotos.find(photo => existingDayPhotos.some(r => (r.photo_angle || 'front') === photo.angle));
-      if (duplicateAngle) {
-        showToast(`${dayKey} 已有${photoAngleLabels[duplicateAngle.angle]}；請先刪除舊照片再替換`, true);
-        return;
-      }
+    const hasAnyData = (weight !== null) || pendingPhotos.length > 0 || (waist !== null) || (hip !== null) || (chest !== null) || (bodyFat !== null) || (note.length > 0);
+    if (!hasAnyData) {
+      showToast('請至少輸入體重、拍攝體態照片或填寫圍度/筆記', true);
+      if (fromCamera) closeCountdownCamera();
+      if (elements.weightInput) elements.weightInput.focus();
+      return false;
+    }
 
-      const hasAnyData = (weight !== null) || pendingPhotos.length > 0 || (waist !== null) || (hip !== null) || (chest !== null) || (bodyFat !== null) || (note.length > 0);
-      if (!hasAnyData) {
-        showToast('請至少輸入體重、拍攝體態照片或填寫圍度/筆記', true);
-        return;
-      }
+    const btnText = elements.btnSubmitRecord ? elements.btnSubmitRecord.querySelector('.btn-text') : null;
+    const btnSpinner = elements.btnSubmitRecord ? elements.btnSubmitRecord.querySelector('.btn-spinner') : null;
+    if (btnText) btnText.classList.add('hidden');
+    if (btnSpinner) btnSpinner.classList.remove('hidden');
+    if (elements.btnSubmitRecord) elements.btnSubmitRecord.disabled = true;
 
-      const btnText = elements.btnSubmitRecord.querySelector('.btn-text');
-      const btnSpinner = elements.btnSubmitRecord.querySelector('.btn-spinner');
-      btnText.classList.add('hidden');
-      btnSpinner.classList.remove('hidden');
-      elements.btnSubmitRecord.disabled = true;
+    if (elements.btnSaveCameraDirectly) {
+      elements.btnSaveCameraDirectly.disabled = true;
+      elements.btnSaveCameraDirectly.textContent = '⏳ 正在儲存中...';
+    }
 
-      try {
-        if (pendingPhotos.length > 0) {
-          showToast(`正在儲存 ${pendingPhotos.length} 個角度的體態相簿...`);
+    try {
+      if (pendingPhotos.length > 0) {
+        showToast(`正在儲存 ${pendingPhotos.length} 個角度的體態相簿...`);
 
-          if (window.SupabaseService && window.SupabaseService.isConfigured()) {
-            for (let i = 0; i < pendingPhotos.length; i++) {
-              const { angle, blob } = pendingPhotos[i];
-              showToast(`正在上傳 ${photoAngleLabels[angle]}照片...`);
-              const uploadResult = await window.SupabaseService.uploadPhoto(blob);
-              await window.SupabaseService.createRecord({
-                weight: weight,
-                body_fat: bodyFat,
-                waist_cm: waist,
-                hip_cm: hip,
-                chest_cm: chest,
-                record_date: recordDate,
-                note: i === 0 ? note : '',
-                tags: tags,
-                photo_path: uploadResult.path,
-                photo_angle: angle
-              });
-            }
-            showToast(`🎉 三角度體態相簿 (共 ${pendingPhotos.length} 張) 已一次性存入私人保險箱！`);
-          } else {
-            for (let i = 0; i < pendingPhotos.length; i++) {
-              const { angle, blob } = pendingPhotos[i];
-              const formData = new FormData();
-              if (weight !== null) formData.append('weight', weight);
-              if (bodyFat !== null) formData.append('body_fat', bodyFat);
-              if (waist !== null) formData.append('waist_cm', waist);
-              if (hip !== null) formData.append('hip_cm', hip);
-              if (chest !== null) formData.append('chest_cm', chest);
-              formData.append('record_date', recordDate);
-              formData.append('note', i === 0 ? note : '');
-              formData.append('tags', tags);
-              formData.append('photo_angle', angle);
-              formData.append('photo', blob, `photo-${angle}-${Date.now()}.jpg`);
-
-              const res = await fetch('/api/records', { method: 'POST', body: formData });
-              const data = await res.json();
-              if (!data.success) throw new Error(data.error || `角度 ${angle} 儲存失敗`);
-            }
-            showToast(`🎉 三角度體態相簿 (共 ${pendingPhotos.length} 張) 已一次性成功儲存！`);
-          }
-
-          // Reset all selected photos
-          state.selectedPhotos = { front: null, side: null, back: null };
-          state.selectedPhotoBlob = null;
-          selectPhotoAngle('front');
-
-        } else {
-          // Pure weight/tape record without photo
-          if (window.SupabaseService && window.SupabaseService.isConfigured()) {
+        if (window.SupabaseService && window.SupabaseService.isConfigured()) {
+          for (let i = 0; i < pendingPhotos.length; i++) {
+            const { angle, blob } = pendingPhotos[i];
+            showToast(`正在上傳 ${photoAngleLabels[angle]}照片...`);
+            const uploadResult = await window.SupabaseService.uploadPhoto(blob);
             await window.SupabaseService.createRecord({
               weight: weight,
               body_fat: bodyFat,
@@ -1127,54 +1135,115 @@ document.addEventListener('DOMContentLoaded', () => {
               hip_cm: hip,
               chest_cm: chest,
               record_date: recordDate,
-              note: note,
+              note: i === 0 ? note : '',
               tags: tags,
-              photo_path: null,
-              photo_angle: 'front'
+              photo_path: uploadResult.path,
+              photo_angle: angle
             });
-            showToast('🎉 私人紀錄已儲存！');
-          } else {
+          }
+          showToast(`🎉 三角度體態相簿 (共 ${pendingPhotos.length} 張) 已一次性存入私人保險箱！`);
+        } else {
+          for (let i = 0; i < pendingPhotos.length; i++) {
+            const { angle, blob } = pendingPhotos[i];
             const formData = new FormData();
-            formData.append('weight', weight);
+            if (weight !== null) formData.append('weight', weight);
             if (bodyFat !== null) formData.append('body_fat', bodyFat);
             if (waist !== null) formData.append('waist_cm', waist);
             if (hip !== null) formData.append('hip_cm', hip);
             if (chest !== null) formData.append('chest_cm', chest);
             formData.append('record_date', recordDate);
-            formData.append('note', note);
+            formData.append('note', i === 0 ? note : '');
             formData.append('tags', tags);
-            formData.append('photo_angle', 'front');
+            formData.append('photo_angle', angle);
+            formData.append('photo', blob, `photo-${angle}-${Date.now()}.jpg`);
 
             const res = await fetch('/api/records', { method: 'POST', body: formData });
             const data = await res.json();
-            if (!data.success) throw new Error(data.error || '儲存失敗');
-            showToast('🎉 本機記錄儲存成功！');
+            if (!data.success) throw new Error(data.error || `角度 ${angle} 儲存失敗`);
           }
+          showToast(`🎉 三角度體態相簿 (共 ${pendingPhotos.length} 張) 已一次性成功儲存！`);
         }
 
-        playTone(1046, 0.1);
-        setTimeout(() => playTone(1318, 0.16), 110);
-        playHaptic([40, 30, 60]);
+        // Reset all selected photos
+        state.selectedPhotos = { front: null, side: null, back: null };
+        state.selectedPhotoBlob = null;
+        selectPhotoAngle('front');
 
-        elements.noteInput.value = '';
-        if (elements.waistInput) elements.waistInput.value = '';
-        if (elements.hipInput) elements.hipInput.value = '';
-        if (elements.chestInput) elements.chestInput.value = '';
-        state.selectedTags.clear();
-        elements.tagChips.forEach(c => c.classList.remove('active'));
-        clearPhotoPreview();
-        initDateTimeInput();
+      } else {
+        // Pure weight/tape record without photo
+        if (window.SupabaseService && window.SupabaseService.isConfigured()) {
+          await window.SupabaseService.createRecord({
+            weight: weight,
+            body_fat: bodyFat,
+            waist_cm: waist,
+            hip_cm: hip,
+            chest_cm: chest,
+            record_date: recordDate,
+            note: note,
+            tags: tags,
+            photo_path: null,
+            photo_angle: 'front'
+          });
+          showToast('🎉 私人體重紀錄已儲存！');
+        } else {
+          const formData = new FormData();
+          if (weight !== null) formData.append('weight', weight);
+          if (bodyFat !== null) formData.append('body_fat', bodyFat);
+          if (waist !== null) formData.append('waist_cm', waist);
+          if (hip !== null) formData.append('hip_cm', hip);
+          if (chest !== null) formData.append('chest_cm', chest);
+          formData.append('record_date', recordDate);
+          formData.append('note', note);
+          formData.append('tags', tags);
+          formData.append('photo_angle', 'front');
 
-        await loadAllData();
-
-      } catch (err) {
-        console.error('Submit error:', err);
-        showToast('儲存失敗：' + (err.message || '請確認網路連線'), true);
-      } finally {
-        btnText.classList.remove('hidden');
-        btnSpinner.classList.add('hidden');
-        elements.btnSubmitRecord.disabled = false;
+          const res = await fetch('/api/records', { method: 'POST', body: formData });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || '儲存失敗');
+          showToast('🎉 本機體重記錄儲存成功！');
+        }
       }
+
+      if (fromCamera) {
+        closeCountdownCamera();
+      }
+
+      playTone(1046, 0.1);
+      setTimeout(() => playTone(1318, 0.16), 110);
+      playHaptic([40, 30, 60]);
+
+      if (elements.noteInput) elements.noteInput.value = '';
+      if (elements.waistInput) elements.waistInput.value = '';
+      if (elements.hipInput) elements.hipInput.value = '';
+      if (elements.chestInput) elements.chestInput.value = '';
+      state.selectedTags.clear();
+      if (elements.tagChips) elements.tagChips.forEach(c => c.classList.remove('active'));
+      clearPhotoPreview();
+      initDateTimeInput();
+
+      await loadAllData();
+      switchTab('tab-timeline');
+      return true;
+
+    } catch (err) {
+      console.error('Error submitting record:', err);
+      showToast('儲存失敗：' + err.message, true);
+      return false;
+    } finally {
+      if (btnText) btnText.classList.remove('hidden');
+      if (btnSpinner) btnSpinner.classList.add('hidden');
+      if (elements.btnSubmitRecord) elements.btnSubmitRecord.disabled = false;
+      if (elements.btnSaveCameraDirectly) {
+        elements.btnSaveCameraDirectly.disabled = false;
+        updateCameraAngleState();
+      }
+    }
+  }
+
+  function initFormSubmit() {
+    elements.recordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await executeSaveRecords(false);
     });
   }
 
@@ -3048,54 +3117,83 @@ elements.photoModal.addEventListener('click', (e) => {
     }
   }
 
+  function setLogMode(mode) {
+    state.currentLogMode = mode;
+
+    if (elements.logModeTabs) {
+      elements.logModeTabs.querySelectorAll('.log-mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === mode);
+      });
+    }
+
+    const btnSubmitText = elements.btnSubmitRecord ? elements.btnSubmitRecord.querySelector('.btn-text') : null;
+
+    if (mode === 'photo-only') {
+      state.weightSkipped = true;
+      if (elements.weightCard) elements.weightCard.classList.add('hidden');
+      if (elements.photoCard) elements.photoCard.classList.remove('hidden');
+      if (elements.btnSkipWeight) {
+        elements.btnSkipWeight.classList.add('active');
+        elements.btnSkipWeight.textContent = '↩️ 恢復輸入體重';
+      }
+      if (elements.weightInput) {
+        elements.weightInput.value = '';
+        elements.weightInput.disabled = true;
+      }
+      if (btnSubmitText) btnSubmitText.textContent = '📸 儲存今日體態照片';
+      showToast('📸 純拍體態模式：拍照儲存免量體重');
+    } else if (mode === 'weight-only') {
+      state.weightSkipped = false;
+      if (elements.weightCard) elements.weightCard.classList.remove('hidden');
+      if (elements.photoCard) elements.photoCard.classList.add('hidden');
+      if (elements.btnSkipWeight) {
+        elements.btnSkipWeight.classList.remove('active');
+        elements.btnSkipWeight.textContent = '跳過體重 (純拍體態)';
+      }
+      if (elements.weightInput) {
+        elements.weightInput.disabled = false;
+        elements.weightInput.focus();
+      }
+      if (elements.skipWeightNotice) elements.skipWeightNotice.classList.add('hidden');
+      if (elements.weightInputGroup) elements.weightInputGroup.style.opacity = '1';
+      if (btnSubmitText) btnSubmitText.textContent = '⚖️ 快速記錄今日體重';
+      showToast('⚖️ 純秤重模式：快速記錄數字');
+    } else {
+      state.weightSkipped = false;
+      if (elements.weightCard) elements.weightCard.classList.remove('hidden');
+      if (elements.photoCard) elements.photoCard.classList.remove('hidden');
+      if (elements.btnSkipWeight) {
+        elements.btnSkipWeight.classList.remove('active');
+        elements.btnSkipWeight.textContent = '跳過體重 (純拍體態)';
+      }
+      if (elements.weightInput) elements.weightInput.disabled = false;
+      if (elements.skipWeightNotice) elements.skipWeightNotice.classList.add('hidden');
+      if (elements.weightInputGroup) elements.weightInputGroup.style.opacity = '1';
+      if (btnSubmitText) btnSubmitText.textContent = '儲存體態記錄';
+    }
+
+    playTone(720, 0.03);
+    playHaptic([10]);
+  }
+
   function initLogModeTabs() {
     if (!elements.logModeTabs) return;
 
     elements.logModeTabs.querySelectorAll('.log-mode-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const mode = btn.dataset.mode;
-        state.currentLogMode = mode;
-
-        elements.logModeTabs.querySelectorAll('.log-mode-btn').forEach(b => {
-          b.classList.toggle('active', b === btn);
-        });
-
-        if (mode === 'photo-only') {
-          state.weightSkipped = true;
-          if (elements.weightCard) elements.weightCard.classList.add('hidden');
-          if (elements.photoCard) elements.photoCard.classList.remove('hidden');
-          if (elements.btnSkipWeight) elements.btnSkipWeight.classList.add('active');
-          if (elements.weightInput) {
-            elements.weightInput.value = '';
-            elements.weightInput.disabled = true;
-          }
-          showToast('📸 純拍體態模式：拍照儲存免量體重');
-        } else if (mode === 'weight-only') {
-          state.weightSkipped = false;
-          if (elements.weightCard) elements.weightCard.classList.remove('hidden');
-          if (elements.photoCard) elements.photoCard.classList.add('hidden');
-          if (elements.btnSkipWeight) elements.btnSkipWeight.classList.remove('active');
-          if (elements.weightInput) {
-            elements.weightInput.disabled = false;
-            elements.weightInput.focus();
-          }
-          if (elements.skipWeightNotice) elements.skipWeightNotice.classList.add('hidden');
-          if (elements.weightInputGroup) elements.weightInputGroup.style.opacity = '1';
-          showToast('⚖️ 純秤重模式：快速記錄數字');
-        } else {
-          state.weightSkipped = false;
-          if (elements.weightCard) elements.weightCard.classList.remove('hidden');
-          if (elements.photoCard) elements.photoCard.classList.remove('hidden');
-          if (elements.btnSkipWeight) elements.btnSkipWeight.classList.remove('active');
-          if (elements.weightInput) elements.weightInput.disabled = false;
-          if (elements.skipWeightNotice) elements.skipWeightNotice.classList.add('hidden');
-          if (elements.weightInputGroup) elements.weightInputGroup.style.opacity = '1';
-        }
-
-        playTone(720, 0.03);
-        playHaptic([10]);
+        setLogMode(btn.dataset.mode);
       });
     });
+
+    if (elements.btnSkipWeight) {
+      elements.btnSkipWeight.addEventListener('click', () => {
+        if (state.weightSkipped) {
+          setLogMode('all');
+        } else {
+          setLogMode('photo-only');
+        }
+      });
+    }
   }
 
   initLogModeTabs();
