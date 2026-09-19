@@ -524,37 +524,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function initNavigation() {
-    const tabTitles = {
-      'tab-log': '記錄體態',
-      'tab-trends': '趨勢圖表',
-      'tab-timeline': '體態時間軸',
-      'tab-compare': '前後比對',
-      'tab-settings': '設定與連線'
-    };
+  const tabTitles = {
+    'tab-log': '記錄體態',
+    'tab-trends': '趨勢圖表',
+    'tab-timeline': '體態時間軸',
+    'tab-compare': '前後比對',
+    'tab-settings': '設定與連線'
+  };
 
+  function switchTab(targetTabId) {
+    if (!targetTabId) return;
+
+    elements.navTabs.forEach(t => {
+      if (t.dataset.tab === targetTabId) {
+        t.classList.add('active');
+      } else {
+        t.classList.remove('active');
+      }
+    });
+
+    elements.tabPanes.forEach(p => {
+      if (p.id === targetTabId) {
+        p.classList.add('active');
+      } else {
+        p.classList.remove('active');
+      }
+    });
+
+    state.currentTab = targetTabId;
+    if (elements.headerTitle) {
+      elements.headerTitle.textContent = tabTitles[targetTabId] || '體態記錄';
+    }
+
+    if (targetTabId === 'tab-trends') {
+      renderChart(state.chartRange);
+    } else if (targetTabId === 'tab-compare') {
+      refreshComparisonOptions();
+    } else if (targetTabId === 'tab-timeline') {
+      renderTimeline();
+    }
+  }
+
+  function initNavigation() {
     elements.navTabs.forEach(tab => {
       tab.addEventListener('click', () => {
         const targetTabId = tab.dataset.tab;
         if (state.currentTab === targetTabId) return;
-
-        elements.navTabs.forEach(t => t.classList.remove('active'));
-        elements.tabPanes.forEach(p => p.classList.remove('active'));
-
-        tab.classList.add('active');
-        const targetPane = document.getElementById(targetTabId);
-        if (targetPane) targetPane.classList.add('active');
-
-        state.currentTab = targetTabId;
-        elements.headerTitle.textContent = tabTitles[targetTabId] || '體態記錄';
-
-        if (targetTabId === 'tab-trends') {
-          renderChart(state.chartRange);
-        } else if (targetTabId === 'tab-compare') {
-          refreshComparisonOptions();
-        } else if (targetTabId === 'tab-timeline') {
-          renderTimeline();
-        }
+        switchTab(targetTabId);
       });
     });
   }
@@ -589,13 +605,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function initAngleSelector() {
-    const angleMap = { front: '正面', side: '側面', back: '背面' };
     elements.angleRadios.forEach(radio => {
       radio.addEventListener('change', (e) => {
-        state.selectedPhotoAngle = e.target.value;
-        if (elements.previewAngleBadge) {
-          elements.previewAngleBadge.textContent = angleMap[state.selectedPhotoAngle] || '正面';
-        }
+        selectPhotoAngle(e.target.value);
       });
     });
   }
@@ -607,7 +619,11 @@ document.addEventListener('DOMContentLoaded', () => {
     state.selectedPhotoAngle = angle;
     const radio = Array.from(elements.angleRadios).find(item => item.value === angle);
     if (radio) radio.checked = true;
+    if (elements.previewAngleBadge) {
+      elements.previewAngleBadge.textContent = photoAngleLabels[angle] || '正面';
+    }
     renderPhotoAlbum();
+    updateGhostOverlay();
   }
 
   function setPhotoForAngle(angle, blob) {
@@ -933,8 +949,33 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const photoRecords = state.allRecords.filter(r => (r.photo_path || r.photo_url) && (r.photo_angle === state.selectedPhotoAngle || !r.photo_angle));
+    const curAngle = state.selectedPhotoAngle || 'front';
+    const curDateVal = (elements.recordDateInput && elements.recordDateInput.value)
+      ? elements.recordDateInput.value
+      : new Date().toISOString();
+    const curDayKey = curDateVal.substring(0, 10);
+
+    const isMatchingAngle = (r) => {
+      if (!r.photo_path && !r.photo_url) return false;
+      const angle = r.photo_angle || 'front';
+      return angle === curAngle;
+    };
+
+    // 優先尋找記錄日之前（前一天或更早以往）該角度的最新歷史照片
+    let photoRecords = state.allRecords.filter(r => {
+      if (!isMatchingAngle(r)) return false;
+      const rDayKey = (r.record_date || '').substring(0, 10);
+      return rDayKey < curDayKey;
+    });
+
     photoRecords.sort((a, b) => new Date(b.record_date) - new Date(a.record_date));
+
+    // 若歷史以往沒有該角度紀錄，退回選取資料庫內該角度最新紀錄（避免初次使用當天無法預覽）
+    if (photoRecords.length === 0) {
+      photoRecords = state.allRecords.filter(isMatchingAngle);
+      photoRecords.sort((a, b) => new Date(b.record_date) - new Date(a.record_date));
+    }
+
     const prevRecord = photoRecords[0];
 
     if (prevRecord) {
@@ -1053,6 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (nextAngle && !state.selectedPhotos[nextAngle]) {
         selectPhotoAngle(nextAngle);
         updateCameraAngleState();
+        updateGhostOverlay();
         showToast(`📸 ${photoAngleLabels[curAngle]}拍好！已切換至 ${photoAngleLabels[nextAngle]}`);
         if (elements.cameraFlowHint) {
           elements.cameraFlowHint.textContent = `✅ ${photoAngleLabels[curAngle]}已拍好！請轉向${photoAngleLabels[nextAngle]}繼續拍 ➔`;
